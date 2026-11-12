@@ -2,17 +2,57 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">
 <title>Malawi Remit admin</title>
 <style>
-:root{--bg:#eef3f0;--card:#fff;--ink:#10231b;--mute:#5b6e65;--line:#d3ddd7;--green:#0b7a3e;--red:#c8102e;font-family:"Avenir Next","Segoe UI",Roboto,sans-serif}
-@media(prefers-color-scheme:dark){:root{--bg:#0d1a14;--card:#14251d;--ink:#e8f1ec;--mute:#93a79c;--line:#27402f;--green:#2fb36a;--red:#ff5a73}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink)}main{max-width:760px;margin:0 auto;padding:20px 16px 48px}
-h1{font-size:20px}h2{font-size:18px;margin:0 0 10px}.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:14px}
-label{display:block;font-size:13px;color:var(--mute);margin:10px 0 4px}input{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px}
-.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
-button{font:inherit;font-weight:600;border:0;border-radius:10px;padding:10px 16px;background:var(--green);color:#fff;cursor:pointer;margin:12px 8px 0 0}button.no{background:var(--red)}
-.msg{font-size:14px;min-height:20px;margin-top:8px;color:var(--mute)}img{max-width:100%;max-height:260px;border-radius:8px;border:1px solid var(--line)}
-.k{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}.k div{flex:1 1 200px}.s{font-size:14px;color:var(--mute)}
-</style></head><body><main>
-<h1>Malawi Remit admin (test)</h1>
+:root{--ink:#eaf6f1;--mute:#a9c5ba;--glass:rgba(255,255,255,.09);--glass2:rgba(255,255,255,.15);--edge:rgba(255,255,255,.22);--field:rgba(255,255,255,.08);--green:#32d082;--red:#ff6b81;--btn:linear-gradient(135deg,#0b8a52,#07684a);--bg1:#04161b;--bg2:#093a41;--shadow:rgba(0,0,0,.35);font-family:"Avenir Next","Segoe UI",Roboto,sans-serif}
+@media(prefers-color-scheme:light){:root{--ink:#0f2a24;--mute:#4a6a60;--glass:rgba(255,255,255,.55);--glass2:rgba(255,255,255,.75);--edge:rgba(255,255,255,.9);--field:rgba(255,255,255,.55);--green:#0b7a3e;--red:#c8102e;--bg1:#e3f5ec;--bg2:#bfe3f1;--shadow:rgba(20,70,60,.18)}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;color:var(--ink);background:linear-gradient(160deg,var(--bg1),var(--bg2)) fixed;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+.orbs{position:fixed;inset:0;z-index:-1;overflow:hidden}
+.orbs i{position:absolute;border-radius:50%;filter:blur(70px);opacity:.7;animation:drift 24s ease-in-out infinite alternate}
+.orbs i:nth-child(1){width:380px;height:380px;background:#14b36b;top:-90px;left:-110px}
+.orbs i:nth-child(2){width:420px;height:420px;background:#1a8fb5;bottom:-120px;right:-140px;animation-delay:-8s}
+.orbs i:nth-child(3){width:220px;height:220px;background:#ff6a4a;top:46%;left:58%;opacity:.45;animation-delay:-14s}
+@keyframes drift{to{transform:translate(50px,40px) scale(1.12)}}
+.test{width:fit-content;max-width:calc(100% - 32px);margin:12px auto 0;padding:7px 14px;border-radius:999px;font-size:12.5px;text-align:center;background:var(--glass);border:1px solid var(--edge);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);color:var(--mute)}
+main{max-width:460px;margin:0 auto;padding:18px 16px 56px}
+header{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+.logo{width:36px;height:36px;border-radius:11px;background:linear-gradient(145deg,#14b36b,#0a6b4a);position:relative;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.4)}
+.logo:before{content:"";position:absolute;left:0;right:0;top:7px;height:5px;background:#06120e}
+.logo:after{content:"";position:absolute;left:10px;top:16px;width:16px;height:16px;border-radius:50%;background:#ff4d5e}
+h1{font-size:20px;margin:0;letter-spacing:-.015em}
+h2{font-size:22px;margin:0 0 12px;letter-spacing:-.015em}
+.card{background:var(--glass);border:1px solid var(--edge);border-radius:24px;padding:20px;margin-bottom:14px;backdrop-filter:blur(26px) saturate(160%);-webkit-backdrop-filter:blur(26px) saturate(160%);box-shadow:0 14px 40px var(--shadow),inset 0 1px 0 rgba(255,255,255,.28)}
+@supports not (backdrop-filter:blur(1px)){.card,.test{background:#12302b}}
+label{display:block;font-size:13px;color:var(--mute);margin:12px 0 6px}
+input,select{width:100%;font:inherit;font-size:16px;color:var(--ink);background:var(--field);border:1px solid var(--edge);border-radius:14px;padding:13px 14px}
+select option{color:#10231b;background:#fff}
+input::placeholder{color:var(--mute);opacity:.7}
+input:focus,select:focus,button:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+.big{display:flex;align-items:center;gap:10px;background:var(--field);border:1px solid var(--edge);border-radius:18px;padding:8px 12px}
+.big input{border:0;background:transparent;font-size:32px;font-weight:700;padding:6px 0;min-width:0;flex:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.big input:focus{outline:none}.big:focus-within{outline:2px solid var(--green)}
+.big .recv{flex:1;font-size:32px;font-weight:700;letter-spacing:-.02em;color:var(--green);margin:0;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis}
+.chip{font-weight:700;font-size:14px;padding:7px 12px;border-radius:999px;background:var(--glass2);border:1px solid var(--edge)}
+.big select{width:auto;border-radius:999px;padding:8px 12px;font-weight:700;background:var(--glass2)}
+.ratepill{display:inline-block;margin:14px 0 0;padding:7px 14px;border-radius:999px;background:var(--glass2);border:1px solid var(--edge);font-size:13px;font-weight:600}
+.src{font-size:12px;color:var(--mute);margin-top:12px}
+.prog{display:flex;gap:6px;margin-bottom:14px}.prog i{flex:1;height:4px;border-radius:4px;background:var(--glass2)}.prog i.on{background:var(--green)}
+.line{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--edge);font-size:15px;gap:12px}
+.line:last-of-type{border:0}.line span:first-child{color:var(--mute)}.line span:last-child{text-align:right;word-break:break-word}
+small{color:var(--mute)}
+button{font:inherit;font-weight:600;font-size:16px;width:100%;border:1px solid rgba(255,255,255,.25);border-radius:16px;padding:15px;background:var(--btn);color:#fff;cursor:pointer;margin-top:12px;box-shadow:0 8px 22px rgba(7,104,74,.4),inset 0 1px 0 rgba(255,255,255,.3);transition:transform .12s}
+button:active{transform:scale(.98)}
+button.alt{background:var(--glass);color:var(--ink);box-shadow:none}
+button:disabled{opacity:.5;cursor:not-allowed}
+#out{width:auto;margin:0 0 0 auto;padding:8px 14px;font-size:13px;display:none}
+.err{color:var(--red);font-size:14px;min-height:20px;margin-top:8px}
+.hint{font-size:13px;color:var(--mute);margin-top:8px}
+.ok{width:58px;height:58px;border-radius:50%;background:var(--btn);color:#fff;display:grid;place-items:center;font-size:28px;margin-bottom:12px;animation:pop .35s ease-out}
+@keyframes pop{from{transform:scale(.4)}to{transform:scale(1)}}
+@media(prefers-reduced-motion:reduce){.ok,.orbs i{animation:none}button{transition:none}}
+main{max-width:760px}.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.k{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}.k div{flex:1 1 200px}.s{font-size:14px;color:var(--mute)}.msg{font-size:14px;min-height:20px;margin-top:8px;color:var(--mute)}
+img{max-width:100%;max-height:260px;border-radius:12px;border:1px solid var(--edge)}button{width:auto;margin:12px 8px 0 0;padding:11px 18px}button.no{background:linear-gradient(135deg,#d13b52,#9c1d33)}</style></head><body><div class="orbs"><i></i><i></i><i></i></div><main>
+<header><div class="logo"></div><h1>Malawi Remit admin</h1></header>
 <div class="card"><label for="tok">Admin token</label><input id="tok" type="password" autocomplete="off"><button id="in">Sign in</button><div class="msg" id="m0"></div></div>
 <div id="panel" hidden>
  <div class="card"><h2>Bank rates (MWK per 1 unit)</h2>

@@ -1,41 +1,21 @@
-# Malawi Remit (test phase)
+# Malawi Remit
 
-Static prototype: MWK to USD/GBP/EUR/ZAR at the bank rate, shown with a separate, visible fee. Transfers are simulated.
+Installable web app (PWA) for sending money from Malawi at the bank rate. Rates, SMS sign-in and ID checks use real data. **Sending money is deliberately switched off** (the review screen shows "Transfers open soon").
 
 ## Deploy
-1. Push this folder to a GitHub repo.
-2. Cloudflare dashboard > Workers & Pages > Create > Pages > Connect to Git.
-3. Framework preset: None. Build command: (empty). Output directory: `/`.
-4. Every push to `main` redeploys.
+Push to GitHub > Cloudflare Pages > Connect to Git. Framework: None. Build command: empty. Output directory: `/`.
 
-## Update rates
-Edit `rates.json` (MWK per 1 unit of foreign currency, fee %, limits) and push. Source these from the Reserve Bank of Malawi.
+## Required setup (Pages settings)
+1. **KV**: create a namespace, bind it as `KV`.
+2. **Admin**: secret `ADMIN_TOKEN` (long random). Open `/admin`, and also protect `/admin*` and `/api/admin/*` with Cloudflare Access.
+3. **SMS** (needed for sign-in): Africa's Talking (`AT_USERNAME`, `AT_API_KEY`, optional `AT_SENDER_ID`; username `sandbox` for testing) or Twilio (`TWILIO_SID`, `TWILIO_TOKEN`, `TWILIO_FROM`).
+4. **Rates**: publish official bank rates in `/admin`, or set `RATES_URL` to your own JSON feed `{updated, source, perUnit:{USD,GBP,EUR,ZAR}}` (MWK per 1 unit). If neither is set, a labelled market reference rate is used. If no rate is reachable the app shows "Rates unavailable".
+Fee and limits live in `rates.json` (and the admin page overrides them).
 
-## Before a real launch
-Real payments need a licensed payment provider, a backend (rates, KYC, ledger, payouts), and Reserve Bank of Malawi authorisation. The UI here is the front end only.
+## Behaviour
+- No demo code, sample rates or fake receipts. Without KV and SMS configured, sign-in shows "not available yet".
+- ID photos are deleted when you approve or reject.
+- Install: "Add to Home Screen" (iOS Safari) or the install prompt (Android Chrome). The shell works offline; rates, sign-in and ID checks need a connection. API calls and the admin page are never cached.
 
-## Live rates (Pages Function)
-`functions/api/rates.js` serves `/api/rates`, cached for 1 hour. Sources, in order:
-1. `RATES_URL` (Pages > Settings > Environment variables): your own JSON feed of official bank rates, shaped like `rates.json`.
-2. A free market reference rate (labelled as not the official bank rate in the app).
-3. The static `rates.json`.
-Set `RATES_URL` before testing so users see the bank rate, not the market reference.
-
-## Sign-in and ID check (test mode)
-Sign-in uses phone number plus code `123456`. The ID check accepts any details for 18+ users and approves after a few seconds. All of this is simulated in the browser. A real launch needs server-side OTP (SMS) and a KYC provider.
-
-## Admin page and storage (rates + ID approvals)
-1. Cloudflare dashboard > Workers & Pages > KV > Create a namespace (e.g. `mwremit`).
-2. Your Pages project > Settings > Bindings (Functions) > add KV namespace, variable name `KV`.
-3. Settings > Variables and Secrets > add a secret `ADMIN_TOKEN` (long random string).
-4. Redeploy. Open `/admin.html`, enter the token.
-- Rates published there override every other source and appear instantly.
-- ID checks: users' submissions appear with ID photo and selfie. Approve or reject; photos are deleted once you decide, and the user's app updates within seconds.
-- Protect `/admin.html` and `/api/admin/*` with Cloudflare Access (Zero Trust) as well as the token.
-- Without the KV binding the app still works in simulated mode.
-
-## Real SMS codes
-Add these secrets in Pages > Settings > Variables and Secrets (KV must also be bound):
-- Africa's Talking (strong Malawi coverage): `AT_USERNAME`, `AT_API_KEY`, optional `AT_SENDER_ID`. Use username `sandbox` to test.
-- or Twilio: `TWILIO_SID`, `TWILIO_TOKEN`, `TWILIO_FROM`.
-Once either is set, codes are random, expire after 5 minutes, allow 5 tries and one request per minute. A successful code gives a 30-day session token, and ID submissions and status checks are tied to that verified number. With no provider set, the demo code 123456 is used.
+## Turning on transfers later
+Requires a licensed payments partner, server-side payouts and ledger, and Reserve Bank of Malawi authorisation. Replace the disabled button in `stepReview()` in `index.html` once that exists.

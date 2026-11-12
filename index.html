@@ -3,7 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0b7a3e">
+<meta name="theme-color" content="#0a6b4a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
 <title>Malawi Remit</title>
 <style>
@@ -58,20 +61,17 @@ button:disabled{opacity:.5;cursor:not-allowed}
 </head>
 <body>
 <div class="orbs"><i></i><i></i><i></i></div>
-<div class="test">Test phase: transfers here are simulated. No real money moves.</div>
+<div class="test">Early access: rates, sign-in and ID checks are live. Sending money opens soon.</div>
 <main>
   <header><div class="logo"></div><h1>Malawi Remit</h1><button class="alt" id="out">Sign out</button></header>
   <div id="app"></div>
 </main>
 <script>
-const FALLBACK={updated:"n/a",source:"Built-in sample rates",perUnit:{USD:1751,GBP:2300,EUR:2030,ZAR:98},feePct:1,minFeeMWK:2000,minSendMWK:20000,maxSendMWK:5000000};
 const METHODS=["Airtel Money","TNM Mpamba","Bank account (NBM, Standard, FDH, etc.)"];
-const S={step:0,rates:FALLBACK,amt:"",cur:"USD",method:METHODS[0],r:{name:"",country:"",bank:"",acct:"",swift:""},err:"",done:null};
+const S={step:0,rates:null,amt:"",cur:"USD",method:METHODS[0],r:{name:"",country:"",bank:"",acct:"",swift:""},err:"",done:null};
 const $=s=>document.querySelector(s);
 const esc=t=>String(t).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmt=(n,d=2)=>Number(n).toLocaleString("en-GB",{minimumFractionDigits:d,maximumFractionDigits:d});
-const hist=()=>{try{return JSON.parse(localStorage.getItem("mwremit")||"[]")}catch{return[]}};
-const save=h=>{try{localStorage.setItem("mwremit",JSON.stringify(h.slice(0,20)))}catch{}};
 
 function quote(){
   const R=S.rates,rate=R.perUnit[S.cur],amt=parseFloat(S.amt)||0;
@@ -90,15 +90,15 @@ function view(){
   $("#out").onclick=()=>{S.user=null;S.gate="login";try{localStorage.removeItem("mwuser")}catch{};view()};
   if(!S.user)return gateView();
   if(!S.user.verified){S.gate="kyc";return gateView();}
+  if(!S.rates){a.innerHTML=`<div class="card"><h2>Rates unavailable</h2><div class="hint">We could not load today's rates. Check your connection and try again.</div><button id="rt">Try again</button></div>`;$("#rt").onclick=()=>{loadRates().finally(view)};return}
   if(S.step===0)a.innerHTML=stepAmount();
   if(S.step===1)a.innerHTML=stepRecipient();
   if(S.step===2)a.innerHTML=stepReview();
-  if(S.step===3)a.innerHTML=stepDone();
   bind();
 }
 const prog=i=>`<div class="prog">${[0,1,2].map(n=>`<i class="${n<=i?"on":""}"></i>`).join("")}</div>`;
 function stepAmount(){
-  const R=S.rates,h=hist();
+  const R=S.rates;
   return`${prog(0)}<div class="card">
    <label for="amt" style="margin-top:0">You send</label>
    <div class="big"><span class="chip">MWK</span><input id="amt" inputmode="decimal" placeholder="0" value="${esc(S.amt)}"></div>
@@ -110,8 +110,7 @@ function stepAmount(){
    <div class="line"><span>Transfer fee</span><span id="fee"></span></div>
    <label for="meth">Pay with</label><select id="meth">${METHODS.map(m=>`<option ${m===S.method?"selected":""}>${esc(m)}</option>`).join("")}</select>
    <div class="err" id="err"></div>
-   <button id="next">Add recipient details</button></div>
-  ${h.length?`<div class="card"><h2 style="font-size:17px">Recent test transfers</h2>${h.slice(0,5).map(t=>`<div class="line"><span>${esc(t.name)}<br><small>${esc(t.date)}</small></span><span>${fmt(t.recv)} ${esc(t.cur)}<br><small>${esc(t.ref)}</small></span></div>`).join("")}</div>`:""}`;
+   <button id="next">Add recipient details</button></div>`;
 }
 function stepRecipient(){const r=S.r;
   return`${prog(1)}<div class="card"><h2>Who are you sending to?</h2>
@@ -131,14 +130,7 @@ function stepReview(){const q=quote(),r=S.r;
   <div class="line"><span>Pay with</span><span>${esc(S.method)}</span></div>
   <div class="line"><span>Recipient</span><span>${esc(r.name)}<br>${esc(r.bank)}, ${esc(r.country)}</span></div>
   <div class="line"><span>Account</span><span>${esc(r.acct)}<br>${esc(r.swift)}</span></div>
-  <button id="next">Confirm test transfer</button><button class="alt" id="back">Back</button></div>`;}
-function stepDone(){const d=S.done;
-  return`<div class="card"><div class="ok">&#10003;</div><h2>Test transfer recorded</h2>
-  <div class="line"><span>Reference</span><span>${esc(d.ref)}</span></div>
-  <div class="line"><span>Recipient</span><span>${esc(d.name)}</span></div>
-  <div class="line"><span>Amount</span><span>${fmt(d.recv)} ${esc(d.cur)}</span></div>
-  <div class="line"><span>Status</span><span>Simulated, no funds moved</span></div>
-  <button id="next">Send another</button></div>`;}
+  <button disabled>Transfers open soon</button><div class="hint">Sending money is not switched on yet, so nothing is charged or sent. The rate and recipient details above are real.</div><button class="alt" id="back">Back</button></div>`;}
 
 function upd(){const q=quote(),f=$("#fee"),r=$("#recv");if(!f)return;
   f.textContent=q.amt?`MWK ${fmt(q.fee,0)}`:"-";r.textContent=fmt(q.recv);}
@@ -159,11 +151,7 @@ function bind(){
       if(!/^[A-Za-z]{6}[A-Za-z0-9]{2}([A-Za-z0-9]{3})?$/.test(r.swift))return $("#err").textContent="SWIFT/BIC must be 8 or 11 characters.";
       S.step=2;view()};
   }
-  if(S.step===2){b.onclick=()=>{S.step=1;view()};
-    n.onclick=()=>{const q=quote();
-      S.done={ref:"MW"+Date.now().toString(36).toUpperCase(),name:S.r.name,recv:q.recv,cur:S.cur,date:new Date().toLocaleString("en-GB")};
-      const h=hist();h.unshift(S.done);save(h);S.step=3;view()};}
-  if(S.step===3)n.onclick=()=>{S.amt="";S.r={name:"",country:"",bank:"",acct:"",swift:""};S.step=0;view()};
+  if(S.step===2)b.onclick=()=>{S.step=1;view()};
 }
 try{S.user=JSON.parse(localStorage.getItem("mwuser")||"null")}catch{}
 const authH=()=>({"content-type":"application/json",...(S.user&&S.user.token?{authorization:"Bearer "+S.user.token}:{})});
@@ -188,7 +176,7 @@ function gateView(){
     <div class="err" id="err"></div><button id="go">Send code</button></div>`;
   if(g==="otp")a.innerHTML=`<div class="card"><h2>Enter your code</h2>
     <label for="cd">6-digit code sent to ${esc(S.phone)}</label><input id="cd" inputmode="numeric" maxlength="6" autocomplete="one-time-code">
-    ${S.demo?`<div class="hint">Test phase: use code 123456.</div>`:""}
+    
     <div class="err" id="err"></div><button id="go">Verify</button><button class="alt" id="bk">Change number</button></div>`;
   if(g==="kyc")a.innerHTML=`<div class="card"><h2>Verify your identity</h2>
     <div class="hint">Required before your first transfer. In this test, ID details stay on your device and only the last 4 digits are kept.</div>
@@ -206,14 +194,12 @@ function gateView(){
     if(!/^\+?\d{9,13}$/.test(p))return err("Enter a valid mobile number, e.g. +265991234567.");
     go.disabled=true;
     post({action:"send",phone:p}).then(r=>{go.disabled=false;
-      if(r.status===501)S.demo=true;
-      else if(r.status===429)return err("Please wait a minute before asking for another code.");
-      else if(!r.ok)return err("Could not send the code. Check the number and try again.");
-      else S.demo=false;
+      if(r.status===501)return err("Sign-in is not available yet. Please try again later.");
+      if(r.status===429)return err("Please wait a minute before asking for another code.");
+      if(!r.ok)return err("Could not send the code. Check the number and try again.");
       S.phone=p;S.gate="otp";view()}).catch(()=>{go.disabled=false;err("No connection. Try again.")})};
   if(g==="otp"){$("#bk").onclick=()=>{S.gate="login";view()};
     go.onclick=()=>{const c=$("#cd").value.trim();
-      if(S.demo){if(c!=="123456")return err("That code is not correct. Try 123456.");S.user={phone:S.phone,verified:false};saveUser();return view()}
       go.disabled=true;
       post({action:"verify",phone:S.phone,code:c}).then(r=>r.json().then(j=>({r,j}))).then(({r,j})=>{go.disabled=false;
         if(!r.ok)return err(j.error||"That code is not correct.");
@@ -231,11 +217,12 @@ function gateView(){
     Promise.all([shrink($("#idp").files[0]),shrink($("#sf").files[0])])
       .then(([idImg,selfie])=>fetch("/api/kyc",{method:"POST",headers:authH(),body:JSON.stringify({...body,idImg,selfie})}))
       .then(r=>{if(r.status===501)throw"demo";if(!r.ok)throw"fail";S.user.pending=true;saveUser();pollKyc()})
-      .catch(e=>{if(e==="demo")return setTimeout(()=>{S.user.verified=true;saveUser();view()},2500);
-        view();$("#err").textContent="Could not submit. Check your connection and photos, then try again."});
+      .catch(e=>{view();$("#err").textContent=e==="demo"?"ID checks are not available yet. Please try again later.":"Could not submit. Check your connection and photos, then try again."});
   };
 }
-fetch("/api/rates",{cache:"no-store"}).then(r=>{if(!r.ok)throw 0;return r.json()}).catch(()=>fetch("rates.json",{cache:"no-store"}).then(r=>r.json())).then(j=>{S.rates=j}).catch(()=>{}).finally(view);
+function loadRates(){return fetch("/api/rates",{cache:"no-store"}).then(r=>{if(!r.ok)throw 0;return r.json()}).then(j=>{S.rates=j}).catch(()=>{S.rates=null})}
+loadRates().finally(view);
+if("serviceWorker" in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});
 
 </script>
 </body>
