@@ -27,7 +27,12 @@ async function sendSms(env, to, text) {
   return { ok: false, detail: "No SMS provider" };
 }
 
-export async function onRequestPost({ request, env }) {
+export async function onRequestPost(ctx) {
+  try { return await handle(ctx); }
+  catch (e) { console.log("otp error:", e && e.message); return J({ error: "Server error", detail: "server: " + String((e && e.message) || e).slice(0, 120) }, 500); }
+}
+
+async function handle({ request, env }) {
   const hasSms = (env.AT_API_KEY && env.AT_USERNAME) || (env.TWILIO_SID && env.TWILIO_TOKEN && env.TWILIO_FROM);
   if (!env.KV || !hasSms) return J({ error: "SMS not configured" }, 501);
   const b = await request.json().catch(() => null);
