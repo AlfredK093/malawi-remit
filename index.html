@@ -196,7 +196,7 @@ function gateView(){
     post({action:"send",phone:p}).then(r=>{go.disabled=false;
       if(r.status===501)return err("Sign-in is not available yet. Please try again later.");
       if(r.status===429)return err("Please wait a minute before asking for another code.");
-      if(!r.ok)return err("Could not send the code. Check the number and try again.");
+      if(!r.ok)return r.json().catch(()=>({})).then(j=>err("Could not send the code."+(j.detail?" ("+j.detail+")":" Check the number and try again.")));
       S.phone=p;S.gate="otp";view()}).catch(()=>{go.disabled=false;err("No connection. Try again.")})};
   if(g==="otp"){$("#bk").onclick=()=>{S.gate="login";view()};
     go.onclick=()=>{const c=$("#cd").value.trim();
