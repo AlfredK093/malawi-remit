@@ -33,3 +33,9 @@ Sign-in uses phone number plus code `123456`. The ID check accepts any details f
 - ID checks: users' submissions appear with ID photo and selfie. Approve or reject; photos are deleted once you decide, and the user's app updates within seconds.
 - Protect `/admin.html` and `/api/admin/*` with Cloudflare Access (Zero Trust) as well as the token.
 - Without the KV binding the app still works in simulated mode.
+
+## Real SMS codes
+Add these secrets in Pages > Settings > Variables and Secrets (KV must also be bound):
+- Africa's Talking (strong Malawi coverage): `AT_USERNAME`, `AT_API_KEY`, optional `AT_SENDER_ID`. Use username `sandbox` to test.
+- or Twilio: `TWILIO_SID`, `TWILIO_TOKEN`, `TWILIO_FROM`.
+Once either is set, codes are random, expire after 5 minutes, allow 5 tries and one request per minute. A successful code gives a 30-day session token, and ID submissions and status checks are tied to that verified number. With no provider set, the demo code 123456 is used.
