@@ -76,7 +76,7 @@ async function load(){
 async function queue(){
   const r=await api("/api/admin/kyc");if(!r.ok){$("#q").textContent=why(r);return}
   const rows=await r.json(),p=rows.filter(x=>x.status==="pending"),d=rows.filter(x=>x.status!=="pending");
-  $("#q").innerHTML=(p.length?p.map(x=>`<div class="card"><b>${esc(x.name)}</b> ${esc(x.phone)}<div class="s">Born ${esc(x.dob)}. ${esc(x.idType)} ending ${esc(x.idLast4)}. ${esc(x.address)}. Sent ${esc(x.submitted.slice(0,16).replace("T"," "))} UTC</div>
+  $("#q").innerHTML=`<div class="s">${p.length} waiting, ${d.length} decided. Updates every 15 seconds.</div>`+(p.length?p.map(x=>`<div class="card"><b>${esc(x.name)}</b> ${esc(x.phone)}<div class="s">Born ${esc(x.dob)}. ${esc(x.idType)} ending ${esc(x.idLast4)}. ${esc(x.address)}. Sent ${esc(x.submitted.slice(0,16).replace("T"," "))} UTC</div>
    <div class="k"><div><img src="${esc(x.idImg)}" alt="ID"></div><div><img src="${esc(x.selfie)}" alt="Selfie"></div></div>
    <button data-p="${esc(x.phone)}" data-d="approved">Approve</button><button class="no" data-p="${esc(x.phone)}" data-d="rejected">Reject</button></div>`).join(""):"No checks waiting.")+
    (d.length?`<h2>Decided</h2>`+d.map(x=>`<div class="s">${esc(x.name)}, ${esc(x.phone)}: ${esc(x.status)}${x.reason?" ("+esc(x.reason)+")":""}</div>`).join(""):"")}
@@ -91,5 +91,6 @@ async function live(){try{const j=await(await fetch("/api/rates",{cache:"no-stor
   $("#live").textContent=j.perUnit?`Live now: 1 USD = MWK ${j.perUnit.USD} (${j.source}, dated ${j.updated}${j.override?", MANUAL OVERRIDE":""}${j.stale?", STALE":""})`:"No rate source is reachable right now."}catch{$("#live").textContent="Could not load live rates."}}
 $("#clr").onclick=async()=>{if(!confirm("Remove the manual override and use automatic Reserve Bank of Malawi rates?"))return;
   const r=await api("/api/admin/rates",null,"DELETE");$("#m1").textContent=r.ok?"Override removed. Automatic rates are live.":why(r);live()};
+setInterval(()=>{if(!$("#panel").hidden)queue()},15000);
 if(T)load();
 </script></body></html>
