@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a6b4a"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes">
-<link rel="manifest" href="manifest.json"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><title>Malawi Remit</title>
+<link rel="icon" href="/icons/icon-192.png"><link rel="manifest" href="manifest.json"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><title>Malawi Remit</title>
 <style>
 :root{--ink:#eaf6f1;--mute:#a9c5ba;--glass:rgba(255,255,255,.09);--glass2:rgba(255,255,255,.15);--edge:rgba(255,255,255,.22);--field:rgba(255,255,255,.08);--green:#32d082;--red:#ff6b81;--btn:linear-gradient(135deg,#0b8a52,#07684a);--bg1:#04161b;--bg2:#093a41;--shadow:rgba(0,0,0,.35);font-family:"Avenir Next","Segoe UI",Roboto,sans-serif}
 @media(prefers-color-scheme:light){:root{--ink:#0f2a24;--mute:#4a6a60;--glass:rgba(255,255,255,.55);--glass2:rgba(255,255,255,.75);--edge:rgba(255,255,255,.9);--field:rgba(255,255,255,.55);--green:#0b7a3e;--red:#c8102e;--bg1:#e3f5ec;--bg2:#bfe3f1;--shadow:rgba(20,70,60,.18)}}
@@ -57,13 +57,30 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .tabs{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:center;gap:10px;padding:10px 16px calc(10px + env(safe-area-inset-bottom));background:var(--glass);border-top:1px solid var(--edge);backdrop-filter:blur(26px);-webkit-backdrop-filter:blur(26px)}
 .tabs button{margin:0;max-width:200px;padding:11px}main{padding-bottom:96px}
 .big2{font-size:28px;font-weight:700;letter-spacing:-.02em;margin:0 0 8px}.center{text-align:center}.dot{width:56px;height:56px;border-radius:50%;background:var(--glass2);display:grid;place-items:center;font-size:26px;margin:0 auto 12px;border:1px solid var(--edge)}
+
+header{display:flex;align-items:center;gap:10px;margin-bottom:20px;min-height:44px}
+.brand{display:flex;align-items:center;gap:10px;flex:1}.brand h1{font-size:19px}
+.bk{width:44px;height:44px;padding:0;margin:0;border-radius:50%;font-size:20px;background:var(--glass);box-shadow:none;flex:none}
+.badge{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;padding:6px 10px;border-radius:999px;background:var(--glass2);border:1px solid var(--edge);color:var(--mute)}
+.card{animation:rise .5s cubic-bezier(.2,.8,.2,1) both}.card:nth-child(2){animation-delay:.06s}.card:nth-child(3){animation-delay:.12s}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.hero{text-align:center;padding:30px 20px 22px}.hero svg{filter:drop-shadow(0 14px 30px rgba(22,196,127,.5));animation:float 5s ease-in-out infinite alternate}
+@keyframes float{to{transform:translateY(-8px)}}
+.hero .big2{font-size:34px;line-height:1.1;margin:16px 0 10px}.grad{background:linear-gradient(90deg,#32d082,#ff8a6b);-webkit-background-clip:text;background-clip:text;color:transparent}
+.chips{display:flex;gap:8px;overflow-x:auto;margin:0 -16px 14px;padding:2px 16px 6px;scrollbar-width:none}.chips::-webkit-scrollbar{display:none}
+.chips button{width:auto;flex:none;margin:0;padding:10px 16px;font-size:14px;border-radius:14px}
+.chip2{flex:none;padding:10px 14px;border-radius:16px;background:var(--glass);border:1px solid var(--edge);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);font-size:13px;color:var(--mute)}.chip2 b{display:block;color:var(--ink);font-size:15px}
+.feat{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.feat div{background:var(--glass);border:1px solid var(--edge);border-radius:18px;padding:14px 8px;text-align:center;font-size:12px;color:var(--mute);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}.feat b{display:block;font-size:14px;color:var(--ink);margin-bottom:3px}
+.grn{color:var(--green);font-weight:700}
+input,select{min-height:52px}button{min-height:54px}
+@media(prefers-reduced-motion:reduce){.card,.hero svg{animation:none}}
 </style></head><body>
 <div class="orbs"><i></i><i></i><i></i></div>
-<div class="test">Early access: rates, sign-in and ID checks are live. Sending money opens soon.</div>
-<main><header><div class="logo"></div><h1>Malawi Remit</h1></header><div id="app"></div></main>
+<main><header id="hd"></header><div id="app"></div></main>
 <div id="tabs" class="tabs" hidden><button data-a="tab" data-t="send">Send</button><button class="alt" data-a="tab" data-t="acct">Account</button></div>
 <script>
 const $=s=>document.querySelector(s),esc=t=>String(t??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])),fmt=(n,d=2)=>Number(n).toLocaleString("en-GB",{minimumFractionDigits:d,maximumFractionDigits:d});
+const LOGO=n=>`<svg width="${n}" height="${n}" viewBox="0 0 64 64" aria-label="Malawi Remit"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#16c47f"/><stop offset="1" stop-color="#0a5f6e"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(#lg)"/><circle cx="26" cy="40" r="11" fill="#ff4d5e"/><path d="M18 48C32 48 42 40 45 24" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/><path d="M37 22L46 18L48 28" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const METHODS=["Airtel Money","TNM Mpamba","Bank account"];
 const S={v:"boot",rates:null,user:null,tab:"send",step:0,wiz:1,mode:"in",note:"",
  q:{amt:"",cur:"USD",method:METHODS[0]},r:{name:"",country:"",bank:"",acct:"",swift:""},
@@ -92,10 +109,13 @@ const upload=(l,key,cap)=>`<label>${l}</label><input type="file" accept="image/*
 
 const V={
  boot:()=>`<div class="card center"><h2>Loading</h2></div>`,
- welcome:()=>{const R=S.rates;return`<div class="card"><div class="big2">Send money abroad from Malawi</div><div class="hint" style="font-size:15px;margin:0 0 6px">Official Reserve Bank of Malawi rate and a clear fee, shown before you decide.</div>${R?`<div class="ratepill">1 USD = MWK ${fmt(R.perUnit.USD)}</div>`:""}<button data-a="go" data-m="up">Create account</button><button class="alt" data-a="go" data-m="in">Sign in</button><div class="err">${esc(S.note)}</div></div>
-  <div class="card"><div class="line"><span>Exchange rate</span><span>Bank rate, no markup</span></div><div class="line"><span>Fees</span><span>Shown up front</span></div><div class="line"><span>Your account</span><span>ID verified</span></div></div>`},
- auth:()=>{const up=S.mode==="up";return`<button class="link" data-a="back">&larr; Back</button><div class="card"><h2>${up?"Create your account":"Welcome back"}</h2><div class="hint" style="margin:0">We will text you a 6-digit code.</div>${field("Mobile number","ph","a.ph",'type="tel" inputmode="tel" placeholder="+265 99 123 4567"')}${up?`<label class="chk"><input type="checkbox" data-s="a.ag" ${S.a.ag?"checked":""}> I agree to my details being used to verify my identity and provide this service.</label>`:""}<div class="err" id="err">${esc(S.note)}</div><button id="go" data-a="send">Send code</button><button class="alt" data-a="swap">${up?"I already have an account":"Create a new account"}</button></div>`},
- otp:()=>`<button class="link" data-a="back">&larr; Change number</button><div class="card"><h2>Enter your code</h2><div class="hint" style="margin:0">Sent to ${esc(S.a.phone)}</div>${field("6-digit code","cd","a.code",'inputmode="numeric" maxlength="6" autocomplete="one-time-code"')}<div class="err" id="err"></div><button id="go" data-a="verify">Verify</button><button class="alt" id="rs" data-a="resend">Resend code</button></div>`,
+ welcome:()=>{const R=S.rates;let ex="";
+  if(R){const a=500000,fee=Math.max(R.minFeeMWK,a*R.feePct/100);ex=`<div class="card"><div class="src" style="margin:0 0 6px">EXAMPLE AT TODAY'S BANK RATE</div><div class="line"><span>You send</span><span>MWK ${fmt(a,0)}</span></div><div class="line"><span>Fee</span><span>MWK ${fmt(fee,0)}</span></div><div class="line"><span>They receive</span><span class="grn">${fmt((a-fee)/R.perUnit.USD)} USD</span></div></div>`}
+  return`<div class="card hero">${LOGO(88)}<div class="big2">Your kwacha, <span class="grad">anywhere</span>.</div><div class="hint" style="font-size:15px;margin:0 0 8px">Send money abroad at the real Reserve Bank of Malawi rate. No hidden markups.</div><button data-a="go" data-m="up">Get started</button><button class="alt" data-a="go" data-m="in">I have an account</button><div class="err">${esc(S.note)}</div></div>
+  ${R?`<div class="chips">${Object.keys(R.perUnit).map(c=>`<div class="chip2"><b>${c}</b>MWK ${fmt(R.perUnit[c])}</div>`).join("")}</div>`:""}${ex}
+  <div class="feat"><div><b>Bank rate</b>No markup</div><div><b>Clear fees</b>Shown first</div><div><b>Verified</b>ID checked</div></div>`},
+ auth:()=>{const up=S.mode==="up";return`<div class="card"><h2>${up?"Create your account":"Welcome back"}</h2><div class="hint" style="margin:0">We will text you a 6-digit code.</div>${field("Mobile number","ph","a.ph",'type="tel" inputmode="tel" placeholder="+265 99 123 4567"')}${up?`<label class="chk"><input type="checkbox" data-s="a.ag" ${S.a.ag?"checked":""}> I agree to my details being used to verify my identity and provide this service.</label>`:""}<div class="err" id="err">${esc(S.note)}</div><button id="go" data-a="send">Send code</button><button class="alt" data-a="swap">${up?"I already have an account":"Create a new account"}</button></div>`},
+ otp:()=>`<div class="card"><h2>Enter your code</h2><div class="hint" style="margin:0">Sent to ${esc(S.a.phone)}</div>${field("6-digit code","cd","a.code",'inputmode="numeric" maxlength="6" autocomplete="one-time-code"')}<div class="err" id="err"></div><button id="go" data-a="verify">Verify</button><button class="alt" id="rs" data-a="resend">Resend code</button></div>`,
  kyc:()=>{const k=S.k,w=S.wiz,note=S.user.status==="rejected"?`<div class="err">Your last check was not approved${S.user.reason?": "+esc(S.user.reason):""}. Please check your details and submit again.</div>`:"";
   const body=w===1?`${field("Full legal name","fn","k.fn",'autocomplete="name"')}${field("Date of birth","dob","k.dob",'type="date"')}${field("Home address (town or district)","adr","k.adr")}`
    :w===2?`<label for="idt">ID type</label><select id="idt" data-s="k.idt">${["National ID","Passport","Driving licence"].map(x=>`<option ${x===k.idt?"selected":""}>${x}</option>`).join("")}</select>${field("ID number","idn","k.idn",'autocomplete="off"')}${upload("Photo of your ID","idImg","environment")}`
@@ -105,13 +125,16 @@ const V={
  home:()=>S.tab==="acct"?V.acct():[V.amount,V.recip,V.review][S.step](),
  acct:()=>`<div class="card center"><div class="dot">${esc((S.user.name||"?")[0])}</div><h2>${esc(S.user.name||"Your account")}</h2><div class="line"><span>Phone</span><span>${esc(S.user.phone)}</span></div><div class="line"><span>ID check</span><span>Verified</span></div><button class="alt" data-a="out">Sign out</button></div>`,
  amount:()=>{const R=S.rates;if(!R)return`<div class="card"><h2>Rates unavailable</h2><div class="hint">We could not load today's rates.</div><button data-a="rates">Try again</button></div>`;
-  return`${prog(1)}<div class="card"><label style="margin-top:0">You send</label><div class="big"><span class="chip">MWK</span><input id="amt" data-s="q.amt" inputmode="decimal" placeholder="0" value="${esc(S.q.amt)}"></div><label>They receive</label><div class="big"><span class="recv" id="recv"></span><select id="cur" data-s="q.cur">${Object.keys(R.perUnit).map(c=>`<option ${c===S.q.cur?"selected":""}>${c}</option>`).join("")}</select></div><div class="ratepill">1 ${S.q.cur} = MWK ${fmt(R.perUnit[S.q.cur])}</div><div class="src">${esc(R.source)}. Rate date: ${esc(R.updated)}.${R.stale?" Latest rate we could get.":""}</div></div>
+  return`<div class="big2" style="font-size:24px;margin:0 0 12px">Hello, ${esc((S.user.name||"there").split(" ")[0])}</div><div class="chips">${Object.keys(R.perUnit).map(c=>`<button class="${c===S.q.cur?"":"alt"}" data-a="cur" data-c="${c}">${c}</button>`).join("")}</div>${prog(1)}<div class="card"><label style="margin-top:0">You send</label><div class="big"><span class="chip">MWK</span><input id="amt" data-s="q.amt" inputmode="decimal" placeholder="0" value="${esc(S.q.amt)}"></div><label>They receive</label><div class="big"><span class="recv" id="recv"></span><select id="cur" data-s="q.cur">${Object.keys(R.perUnit).map(c=>`<option ${c===S.q.cur?"selected":""}>${c}</option>`).join("")}</select></div><div class="ratepill">1 ${S.q.cur} = MWK ${fmt(R.perUnit[S.q.cur])}</div><div class="src">${esc(R.source)}. Rate date: ${esc(R.updated)}.${R.stale?" Latest rate we could get.":""}</div></div>
   <div class="card"><div class="line"><span>Transfer fee</span><span id="fee"></span></div><label>Pay with</label><select data-s="q.method">${METHODS.map(m=>`<option ${m===S.q.method?"selected":""}>${m}</option>`).join("")}</select><div class="err" id="err"></div><button data-a="toR">Add recipient</button></div>`},
  recip:()=>`${prog(2)}<div class="card"><h2>Who are you sending to?</h2>${field("Full name (as on bank account)","rn","r.name")}${field("Country","rc","r.country")}${field("Bank name","rb","r.bank")}${field("Account number or IBAN","ra","r.acct",'autocomplete="off"')}${field("SWIFT/BIC code","rs2","r.swift",'autocapitalize="characters"')}<div class="err" id="err"></div><button data-a="toV">Review</button><button class="alt" data-a="s0">Back</button></div>`,
  review:()=>{const q=quote(),r=S.r;return`${prog(3)}<div class="card"><h2>Review</h2><div class="line"><span>You send</span><span>MWK ${fmt(q.a,0)}</span></div><div class="line"><span>Bank rate</span><span>1 ${S.q.cur} = MWK ${fmt(q.rate)}</span></div><div class="line"><span>Fee</span><span>MWK ${fmt(q.fee,0)}</span></div><div class="line"><span>They receive</span><span><b>${fmt(q.recv)} ${S.q.cur}</b></span></div><div class="line"><span>Recipient</span><span>${esc(r.name)}<br>${esc(r.bank)}, ${esc(r.country)}</span></div><button disabled>Transfers open soon</button><div class="hint">Sending money is not switched on yet, so nothing is charged or sent.</div><button class="alt" data-a="s1">Back</button></div>`}
 };
 function upd(){if(!$("#fee")||!S.rates)return;const q=quote();$("#fee").textContent=q.a?`MWK ${fmt(q.fee,0)}`:"-";$("#recv").textContent=fmt(q.recv)}
-function render(){clearInterval(S.poll);const app=$("#app");app.innerHTML=V[S.v]();
+function canBack(){return S.v==="auth"||S.v==="otp"||(S.v==="kyc"&&S.wiz>1)||(S.v==="home"&&S.tab==="send"&&S.step>0)}
+function goBack(){if(S.v==="otp")S.v="auth";else if(S.v==="auth")S.v="welcome";else if(S.v==="kyc")S.wiz--;else if(S.v==="home")S.step--;S.note="";render()}
+function hd(){$("#hd").innerHTML=(canBack()?`<button class="bk" data-a="hback" aria-label="Back">&#8592;</button>`:"")+`<div class="brand">${canBack()?"":LOGO(36)}<h1>Malawi Remit</h1></div><span class="badge">Early access</span>`}
+function render(){clearInterval(S.poll);const app=$("#app");app.innerHTML=V[S.v]();hd();
   const t=$("#tabs");t.hidden=S.v!=="home";if(!t.hidden)t.querySelectorAll("button").forEach(b=>b.className=b.dataset.t===S.tab?"":"alt");
   upd();window.scrollTo(0,0);
   if(S.v==="pending")S.poll=setInterval(async()=>{await sync();if(!S.user||S.user.status!=="pending"){route();render()}},8000);
@@ -145,15 +168,17 @@ const A={
  tab:b=>{S.tab=b.dataset.t;S.step=0;render()},
  toR:()=>{const m=amtErr();if(m)return fail(m);S.step=1;render()},
  toV:()=>{const r=S.r;if(!r.name||!r.country||!r.bank)return fail("Fill in name, country and bank.");if(r.acct.replace(/\s/g,"").length<6)return fail("Account number or IBAN looks too short.");if(!/^[A-Za-z]{6}[A-Za-z0-9]{2}([A-Za-z0-9]{3})?$/.test(r.swift))return fail("SWIFT/BIC must be 8 or 11 characters.");S.step=2;render()},
- s0:()=>{S.step=0;render()},s1:()=>{S.step=1;render()}
+ cur:b=>{S.q.cur=b.dataset.c;render()},hback:()=>goBack(),s0:()=>{S.step=0;render()},s1:()=>{S.step=1;render()}
 };
-document.addEventListener("click",e=>{const b=e.target.closest("[data-a]");if(b&&A[b.dataset.a])A[b.dataset.a](b)});
+document.addEventListener("click",e=>{const b=e.target.closest("[data-a]");if(b&&A[b.dataset.a]){if(navigator.vibrate)navigator.vibrate(8);A[b.dataset.a](b)}});
 document.addEventListener("input",e=>{const t=e.target,p=t.dataset.s;if(!p)return;const[o,k]=p.split(".");S[o][k]=t.type==="checkbox"?t.checked:t.value;if(p==="q.amt"){S.q.amt=t.value.replace(/[^\d.]/g,"");upd()}});
 document.addEventListener("change",e=>{const t=e.target;
   if(t.dataset.s==="q.cur")render();
   if(t.dataset.f&&t.files[0])shrink(t.files[0]).then(d=>{if(!d)return fail("Could not read that photo. Use a JPG or PNG image.");S.k[t.dataset.f]=d;render()})});
 async function boot(){await Promise.all([loadRates(),sync()]);route();render()}
 boot();
+history.pushState({a:1},"");
+addEventListener("popstate",()=>{if(canBack()){goBack();history.pushState({a:1},"")}});
 const refresh=()=>loadRates().then(()=>{const e=document.activeElement;if(S.v==="home"&&S.step===0&&!(e&&e.tagName==="INPUT"))render()});
 setInterval(refresh,900000);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden){if(S.user)sync().then(()=>{const was=S.v;route();if(was!==S.v)render()});refresh()}});
