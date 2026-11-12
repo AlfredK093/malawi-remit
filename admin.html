@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">
+<title>Malawi Remit admin</title>
+<style>
+:root{--bg:#eef3f0;--card:#fff;--ink:#10231b;--mute:#5b6e65;--line:#d3ddd7;--green:#0b7a3e;--red:#c8102e;font-family:"Avenir Next","Segoe UI",Roboto,sans-serif}
+@media(prefers-color-scheme:dark){:root{--bg:#0d1a14;--card:#14251d;--ink:#e8f1ec;--mute:#93a79c;--line:#27402f;--green:#2fb36a;--red:#ff5a73}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink)}main{max-width:760px;margin:0 auto;padding:20px 16px 48px}
+h1{font-size:20px}h2{font-size:18px;margin:0 0 10px}.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:14px}
+label{display:block;font-size:13px;color:var(--mute);margin:10px 0 4px}input{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px}
+.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+button{font:inherit;font-weight:600;border:0;border-radius:10px;padding:10px 16px;background:var(--green);color:#fff;cursor:pointer;margin:12px 8px 0 0}button.no{background:var(--red)}
+.msg{font-size:14px;min-height:20px;margin-top:8px;color:var(--mute)}img{max-width:100%;max-height:260px;border-radius:8px;border:1px solid var(--line)}
+.k{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}.k div{flex:1 1 200px}.s{font-size:14px;color:var(--mute)}
+</style></head><body><main>
+<h1>Malawi Remit admin (test)</h1>
+<div class="card"><label for="tok">Admin token</label><input id="tok" type="password" autocomplete="off"><button id="in">Sign in</button><div class="msg" id="m0"></div></div>
+<div id="panel" hidden>
+ <div class="card"><h2>Bank rates (MWK per 1 unit)</h2>
+  <div class="g"><div><label>USD</label><input id="USD" inputmode="decimal"></div><div><label>GBP</label><input id="GBP" inputmode="decimal"></div><div><label>EUR</label><input id="EUR" inputmode="decimal"></div><div><label>ZAR</label><input id="ZAR" inputmode="decimal"></div></div>
+  <div class="g"><div><label>Fee %</label><input id="fee" inputmode="decimal"></div><div><label>Minimum fee (MWK)</label><input id="minfee" inputmode="decimal"></div></div>
+  <label>Source label shown to users</label><input id="src" value="Reserve Bank of Malawi official rate">
+  <button id="sv">Publish rates</button><div class="msg" id="m1"></div></div>
+ <div class="card"><h2>ID checks</h2><div id="q" class="s">Loading</div><button id="rf">Refresh</button></div>
+</div></main>
+<script>
+const $=s=>document.querySelector(s),esc=t=>String(t??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let T=sessionStorage.getItem("t")||"";
+const api=(p,b)=>fetch(p,{method:b?"POST":"GET",headers:{authorization:"Bearer "+T,"content-type":"application/json"},body:b?JSON.stringify(b):undefined});
+const why=r=>r.status===401?"Wrong token.":r.status===501?"KV is not bound to this project yet. See README.":"Request failed.";
+async function load(){
+  const r=await api("/api/admin/rates");if(!r.ok){$("#m0").textContent=why(r);return}
+  sessionStorage.setItem("t",T);$("#panel").hidden=false;$("#m0").textContent="Signed in.";
+  const j=await r.json();if(j.perUnit){for(const c of["USD","GBP","EUR","ZAR"])$("#"+c).value=j.perUnit[c];$("#fee").value=j.feePct;$("#minfee").value=j.minFeeMWK;$("#src").value=j.source}
+  queue()}
+async function queue(){
+  const r=await api("/api/admin/kyc");if(!r.ok){$("#q").textContent=why(r);return}
+  const rows=await r.json(),p=rows.filter(x=>x.status==="pending"),d=rows.filter(x=>x.status!=="pending");
+  $("#q").innerHTML=(p.length?p.map(x=>`<div class="card"><b>${esc(x.name)}</b> ${esc(x.phone)}<div class="s">Born ${esc(x.dob)}. ${esc(x.idType)} ending ${esc(x.idLast4)}. ${esc(x.address)}. Sent ${esc(x.submitted.slice(0,16).replace("T"," "))} UTC</div>
+   <div class="k"><div><img src="${esc(x.idImg)}" alt="ID"></div><div><img src="${esc(x.selfie)}" alt="Selfie"></div></div>
+   <button data-p="${esc(x.phone)}" data-d="approved">Approve</button><button class="no" data-p="${esc(x.phone)}" data-d="rejected">Reject</button></div>`).join(""):"No checks waiting.")+
+   (d.length?`<h2>Decided</h2>`+d.map(x=>`<div class="s">${esc(x.name)}, ${esc(x.phone)}: ${esc(x.status)}${x.reason?" ("+esc(x.reason)+")":""}</div>`).join(""):"")}
+$("#q").onclick=async e=>{const b=e.target.closest("button[data-d]");if(!b)return;
+  const reason=b.dataset.d==="rejected"?prompt("Reason shown to the user (e.g. photo unclear):")||"":"";
+  const r=await api("/api/admin/kyc",{phone:b.dataset.p,decision:b.dataset.d,reason});r.ok?queue():alert(why(r))};
+$("#in").onclick=()=>{T=$("#tok").value.trim();load()};$("#rf").onclick=queue;
+$("#sv").onclick=async()=>{const n=id=>parseFloat($("#"+id).value);
+  const r=await api("/api/admin/rates",{perUnit:{USD:n("USD"),GBP:n("GBP"),EUR:n("EUR"),ZAR:n("ZAR")},feePct:n("fee"),minFeeMWK:n("minfee"),source:$("#src").value});
+  $("#m1").textContent=r.ok?"Published. Users see the new rates on their next load.":r.status===400?"Check every field has a valid number.":why(r)};
+if(T)load();
+</script></body></html>
