@@ -9,7 +9,7 @@ Push to GitHub > Cloudflare Pages > Connect to Git. Framework: None. Build comma
 1. **KV**: create a namespace, bind it as `KV`.
 2. **Admin**: secret `ADMIN_TOKEN` (long random). Open `/admin`, and also protect `/admin*` and `/api/admin/*` with Cloudflare Access.
 3. **SMS** (needed for sign-in): Africa's Talking (`AT_USERNAME`, `AT_API_KEY`, optional `AT_SENDER_ID`; username `sandbox` for testing) or Twilio (`TWILIO_SID`, `TWILIO_TOKEN`, `TWILIO_FROM`).
-4. **Rates**: publish official bank rates in `/admin`, or set `RATES_URL` to your own JSON feed `{updated, source, perUnit:{USD,GBP,EUR,ZAR}}` (MWK per 1 unit). If neither is set, a labelled market reference rate is used. If no rate is reachable the app shows "Rates unavailable".
+4. **Rates are automatic.** `/api/rates` pulls the Reserve Bank of Malawi's published daily rates (Frankfurter, free, no key) and caches them 15 minutes. Optional extras: `ALLRATES_KEY` (AllRatesToday as a second source) or `RATES_URL` (your own feed). If every source fails it serves the last good rates marked as older, else "Rates unavailable". It never uses market or sample rates. `/admin` can publish a manual override and clear it again.
 Fee and limits live in `rates.json` (and the admin page overrides them).
 
 ## Behaviour

@@ -56,22 +56,23 @@ img{max-width:100%;max-height:260px;border-radius:12px;border:1px solid var(--ed
 <div class="card"><label for="tok">Admin token</label><input id="tok" type="password" autocomplete="off"><button id="in">Sign in</button><div class="msg" id="m0"></div></div>
 <div id="panel" hidden>
  <div class="card"><h2>Bank rates (MWK per 1 unit)</h2>
+  <div class="s" id="live">Loading live rates</div><div class="s">Rates update automatically from the Reserve Bank of Malawi. Publish below only to override them.</div>
   <div class="g"><div><label>USD</label><input id="USD" inputmode="decimal"></div><div><label>GBP</label><input id="GBP" inputmode="decimal"></div><div><label>EUR</label><input id="EUR" inputmode="decimal"></div><div><label>ZAR</label><input id="ZAR" inputmode="decimal"></div></div>
   <div class="g"><div><label>Fee %</label><input id="fee" inputmode="decimal"></div><div><label>Minimum fee (MWK)</label><input id="minfee" inputmode="decimal"></div></div>
   <label>Source label shown to users</label><input id="src" value="Reserve Bank of Malawi official rate">
-  <button id="sv">Publish rates</button><div class="msg" id="m1"></div></div>
+  <button id="sv">Publish override</button><button id="clr" class="no">Use automatic rates</button><div class="msg" id="m1"></div></div>
  <div class="card"><h2>ID checks</h2><div id="q" class="s">Loading</div><button id="rf">Refresh</button></div>
 </div></main>
 <script>
 const $=s=>document.querySelector(s),esc=t=>String(t??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 let T=sessionStorage.getItem("t")||"";
-const api=(p,b)=>fetch(p,{method:b?"POST":"GET",headers:{authorization:"Bearer "+T,"content-type":"application/json"},body:b?JSON.stringify(b):undefined});
+const api=(p,b,m)=>fetch(p,{method:m||(b?"POST":"GET"),headers:{authorization:"Bearer "+T,"content-type":"application/json"},body:b?JSON.stringify(b):undefined});
 const why=r=>r.status===401?"Wrong token.":r.status===501?"KV is not bound to this project yet. See README.":"Request failed.";
 async function load(){
   const r=await api("/api/admin/rates");if(!r.ok){$("#m0").textContent=why(r);return}
   sessionStorage.setItem("t",T);$("#panel").hidden=false;$("#m0").textContent="Signed in.";
   const j=await r.json();if(j.perUnit){for(const c of["USD","GBP","EUR","ZAR"])$("#"+c).value=j.perUnit[c];$("#fee").value=j.feePct;$("#minfee").value=j.minFeeMWK;$("#src").value=j.source}
-  queue()}
+  queue();live()}
 async function queue(){
   const r=await api("/api/admin/kyc");if(!r.ok){$("#q").textContent=why(r);return}
   const rows=await r.json(),p=rows.filter(x=>x.status==="pending"),d=rows.filter(x=>x.status!=="pending");
@@ -85,6 +86,10 @@ $("#q").onclick=async e=>{const b=e.target.closest("button[data-d]");if(!b)retur
 $("#in").onclick=()=>{T=$("#tok").value.trim();load()};$("#rf").onclick=queue;
 $("#sv").onclick=async()=>{const n=id=>parseFloat($("#"+id).value);
   const r=await api("/api/admin/rates",{perUnit:{USD:n("USD"),GBP:n("GBP"),EUR:n("EUR"),ZAR:n("ZAR")},feePct:n("fee"),minFeeMWK:n("minfee"),source:$("#src").value});
-  $("#m1").textContent=r.ok?"Published. Users see the new rates on their next load.":r.status===400?"Check every field has a valid number.":why(r)};
+  setTimeout(live,300);$("#m1").textContent=r.ok?"Published. Users see the new rates on their next load.":r.status===400?"Check every field has a valid number.":why(r)};
+async function live(){try{const j=await(await fetch("/api/rates",{cache:"no-store"})).json();
+  $("#live").textContent=j.perUnit?`Live now: 1 USD = MWK ${j.perUnit.USD} (${j.source}, dated ${j.updated}${j.override?", MANUAL OVERRIDE":""}${j.stale?", STALE":""})`:"No rate source is reachable right now."}catch{$("#live").textContent="Could not load live rates."}}
+$("#clr").onclick=async()=>{if(!confirm("Remove the manual override and use automatic Reserve Bank of Malawi rates?"))return;
+  const r=await api("/api/admin/rates",null,"DELETE");$("#m1").textContent=r.ok?"Override removed. Automatic rates are live.":why(r);live()};
 if(T)load();
 </script></body></html>

@@ -105,7 +105,7 @@ function stepAmount(){
    <label for="cur">They receive</label>
    <div class="big"><span class="recv" id="recv"></span><select id="cur" aria-label="Currency">${Object.keys(R.perUnit).map(c=>`<option ${c===S.cur?"selected":""}>${c}</option>`).join("")}</select></div>
    <div class="ratepill">1 ${S.cur} = MWK ${fmt(R.perUnit[S.cur])}</div>
-   <div class="src">${esc(R.source)}. Updated ${esc(R.updated)}.</div></div>
+   <div class="src">${esc(R.source)}. Rate date: ${esc(R.updated)}.${R.stale?" This is the latest rate we could get.":""}</div></div>
   <div class="card">
    <div class="line"><span>Transfer fee</span><span id="fee"></span></div>
    <label for="meth">Pay with</label><select id="meth">${METHODS.map(m=>`<option ${m===S.method?"selected":""}>${esc(m)}</option>`).join("")}</select>
@@ -220,8 +220,11 @@ function gateView(){
       .catch(e=>{view();$("#err").textContent=e==="demo"?"ID checks are not available yet. Please try again later.":"Could not submit. Check your connection and photos, then try again."});
   };
 }
-function loadRates(){return fetch("/api/rates",{cache:"no-store"}).then(r=>{if(!r.ok)throw 0;return r.json()}).then(j=>{S.rates=j}).catch(()=>{S.rates=null})}
+function loadRates(){return fetch("/api/rates",{cache:"no-store"}).then(r=>{if(!r.ok)throw 0;return r.json()}).then(j=>{S.rates=j}).catch(()=>{})}
 loadRates().finally(view);
+const refresh=()=>loadRates().then(()=>{const e=document.activeElement;if(S.step===0&&S.user&&S.user.verified&&!(e&&e.tagName==="INPUT"))view()});
+setInterval(refresh,900000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)refresh()});
 if("serviceWorker" in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});
 
 </script>
