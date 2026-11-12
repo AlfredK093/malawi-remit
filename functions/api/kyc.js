@@ -19,8 +19,8 @@ export async function onRequest({ request, env }) {
   if (request.method !== "POST") return J({ error: "Method not allowed" }, 405);
   const b = await request.json().catch(() => null);
   if (b && sp) b.phone = sp;
-  const tooBig = s => typeof s !== "string" || s.length > 400000;
-  if (!b || !/^\+?\d{9,13}$/.test(b.phone || "") || !b.name || !b.dob || !b.idLast4 || tooBig(b.idImg) || tooBig(b.selfie)) return J({ error: "Invalid submission" }, 400);
+  const tooBig = s => typeof s !== "string" || s.length > 1500000;
+  if (!b || !/^\+?\d{9,13}$/.test(b.phone || "") || !b.name || !b.dob || !b.idLast4 || tooBig(b.idImg) || tooBig(b.selfie)) return J({ error: "Invalid submission", detail: !b ? "no data" : (tooBig(b.idImg) || tooBig(b.selfie)) ? "photo too large or missing" : "missing field" }, 400);
   const rec = { phone: b.phone, name: String(b.name).slice(0, 100), dob: b.dob, idType: String(b.idType).slice(0, 30), idLast4: String(b.idLast4).slice(0, 4), address: String(b.address || "").slice(0, 150), idImg: b.idImg, selfie: b.selfie, status: "pending", submitted: new Date().toISOString() };
   await env.KV.put(key(b.phone), JSON.stringify(rec));
   return J({ status: "pending" });

@@ -154,9 +154,10 @@ function bind(){
   if(S.step===2)b.onclick=()=>{S.step=1;view()};
 }
 try{S.user=JSON.parse(localStorage.getItem("mwuser")||"null")}catch{}
+if(S.user&&!S.user.token){S.user=null;S.notice="Please sign in with your phone number.";try{localStorage.removeItem("mwuser")}catch{}}
 const authH=()=>({"content-type":"application/json",...(S.user&&S.user.token?{authorization:"Bearer "+S.user.token}:{})});
 const saveUser=()=>{try{localStorage.setItem("mwuser",JSON.stringify(S.user))}catch{}};
-const shrink=f=>new Promise(r=>{const i=new Image();i.onload=()=>{const k=Math.min(1,900/Math.max(i.width,i.height)),c=document.createElement("canvas");c.width=i.width*k;c.height=i.height*k;c.getContext("2d").drawImage(i,0,0,c.width,c.height);r(c.toDataURL("image/jpeg",.7))};i.onerror=()=>r(null);i.src=URL.createObjectURL(f)});
+const shrink=f=>new Promise(r=>{const i=new Image();i.onload=()=>{const k=Math.min(1,800/Math.max(i.width,i.height)),c=document.createElement("canvas");c.width=i.width*k;c.height=i.height*k;c.getContext("2d").drawImage(i,0,0,c.width,c.height);r(c.toDataURL("image/jpeg",.6))};i.onerror=()=>r(null);i.src=URL.createObjectURL(f)});
 function pollKyc(){
   $("#app").innerHTML=`<div class="card"><h2>Verification in progress</h2><div class="hint">Our team is checking your ID. This page updates when you are approved. You can close it and come back.</div></div>`;
   const t=()=>{if(!S.user||!S.user.pending)return;
@@ -168,12 +169,22 @@ function pollKyc(){
       else setTimeout(t,5000)}).catch(()=>setTimeout(t,8000))};
   t();
 }
+function signOut(msg){S.user=null;S.gate="login";S.notice=msg||"";try{localStorage.removeItem("mwuser")}catch{}}
+function syncKyc(){
+  if(!S.user||!S.user.token||S.user.verified)return Promise.resolve();
+  return fetch("/api/kyc?phone="+encodeURIComponent(S.user.phone),{headers:authH(),cache:"no-store"}).then(r=>r.status===401?{unauth:true}:r.json()).then(j=>{
+    if(j.unauth)return signOut("Your session expired. Please sign in again.");
+    if(j.status==="approved"){S.user.verified=true;delete S.user.pending;S.kycNote="";saveUser()}
+    else if(j.status==="pending"){S.user.pending=true;saveUser()}
+    else if(j.status==="rejected"){delete S.user.pending;S.kycNote="Your last verification was not approved"+(j.reason?": "+j.reason:"")+". Please submit again.";saveUser()}
+  }).catch(()=>{});
+}
 function gateView(){
   const a=$("#app"),g=S.gate||"login";S.gate=g;
   if(g==="kyc"&&S.user&&S.user.pending)return pollKyc();
   if(g==="login")a.innerHTML=`<div class="card"><h2>Sign in</h2>
     <label for="ph">Mobile number</label><input id="ph" type="tel" inputmode="tel" placeholder="+265 99 123 4567" value="${esc(S.phone||"")}">
-    <div class="err" id="err"></div><button id="go">Send code</button></div>`;
+    <div class="err" id="err">${esc(S.notice||"")}</div><button id="go">Send code</button></div>`;
   if(g==="otp")a.innerHTML=`<div class="card"><h2>Enter your code</h2>
     <label for="cd">6-digit code sent to ${esc(S.phone)}</label><input id="cd" inputmode="numeric" maxlength="6" autocomplete="one-time-code">
     
@@ -187,7 +198,7 @@ function gateView(){
     <label for="adr">Home address (town or district)</label><input id="adr">
     <label for="idp">Photo of your ID</label><input id="idp" type="file" accept="image/*" capture="environment">
     <label for="sf">Selfie</label><input id="sf" type="file" accept="image/*" capture="user">
-    <div class="err" id="err"></div><button id="go">Submit for verification</button></div>`;
+    <div class="err" id="err">${esc(S.kycNote||"")}</div><button id="go">Submit for verification</button></div>`;
   const err=m=>$("#err").textContent=m,go=$("#go");
   const post=b=>fetch("/api/otp",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(b)});
   if(g==="login")go.onclick=()=>{const p=$("#ph").value.replace(/[\s-]/g,"");
@@ -203,7 +214,7 @@ function gateView(){
       go.disabled=true;
       post({action:"verify",phone:S.phone,code:c}).then(r=>r.json().then(j=>({r,j}))).then(({r,j})=>{go.disabled=false;
         if(!r.ok)return err(j.error||"That code is not correct.");
-        S.user={phone:S.phone,token:j.token,verified:false};saveUser();view()}).catch(()=>{go.disabled=false;err("No connection. Try again.")})}};
+        S.user={phone:S.phone,token:j.token,verified:false};S.notice="";saveUser();syncKyc().finally(view)}).catch(()=>{go.disabled=false;err("No connection. Try again.")})}};
   if(g==="kyc")go.onclick=()=>{
     const v=id=>$("#"+id).value.trim(),age=(Date.now()-new Date(v("dob")))/31557600000;
     if(v("fn").split(/\s+/).length<2)return err("Enter your first and last name.");
@@ -215,13 +226,17 @@ function gateView(){
     const body={phone:S.user.phone,name:S.user.name,dob:v("dob"),idType:S.user.idType,idLast4:S.user.idLast4,address:v("adr")};
     $("#app").innerHTML=`<div class="card"><h2>Sending your details</h2><div class="hint">Please wait.</div></div>`;
     Promise.all([shrink($("#idp").files[0]),shrink($("#sf").files[0])])
-      .then(([idImg,selfie])=>fetch("/api/kyc",{method:"POST",headers:authH(),body:JSON.stringify({...body,idImg,selfie})}))
-      .then(r=>{if(r.status===501)throw"demo";if(!r.ok)throw"fail";S.user.pending=true;saveUser();pollKyc()})
-      .catch(e=>{view();$("#err").textContent=e==="demo"?"ID checks are not available yet. Please try again later.":"Could not submit. Check your connection and photos, then try again."});
+      .then(([idImg,selfie])=>{if(!idImg||!selfie)throw"could not read a photo, use a JPG or PNG image";
+        return fetch("/api/kyc",{method:"POST",headers:authH(),body:JSON.stringify({...body,idImg,selfie}),signal:AbortSignal.timeout?AbortSignal.timeout(30000):undefined})})
+      .then(r=>{if(r.status===501)throw"demo";
+        if(r.status===401){signOut("Your session expired. Please sign in again.");return view()}
+        if(!r.ok)return r.json().catch(()=>({})).then(j=>{throw"HTTP "+r.status+(j.detail?", "+j.detail:"")});
+        S.user.pending=true;S.kycNote="";saveUser();pollKyc()})
+      .catch(e=>{view();$("#err").textContent=e==="demo"?"ID checks are not available yet. Please try again later.":"Could not submit: "+(typeof e==="string"?e:"network problem or timeout")+". Try again."});
   };
 }
 function loadRates(){return fetch("/api/rates",{cache:"no-store"}).then(r=>{if(!r.ok)throw 0;return r.json()}).then(j=>{S.rates=j}).catch(()=>{})}
-loadRates().finally(view);
+Promise.all([loadRates(),syncKyc()]).finally(view);
 const refresh=()=>loadRates().then(()=>{const e=document.activeElement;if(S.step===0&&S.user&&S.user.verified&&!(e&&e.tagName==="INPUT"))view()});
 setInterval(refresh,900000);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)refresh()});
