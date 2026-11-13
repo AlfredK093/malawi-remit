@@ -1,21 +1,24 @@
 # Malawi Remit
 
-Installable web app (PWA) for sending money from Malawi at the bank rate. Rates, SMS sign-in and ID checks use real data. **Sending money is deliberately switched off** (the review screen shows "Transfers open soon").
+Installable web app for sending money from Malawi at the Reserve Bank of Malawi rate. Sending money is switched off.
 
-## Deploy
-Push to GitHub > Cloudflare Pages > Connect to Git. Framework: None. Build command: empty. Output directory: `/`.
+## Files (all at the top level of the repo)
+`index.html` `admin.html` `_worker.js` `_routes.json` `sw.js` `manifest.json` `rates.json` `icons/`
+`_worker.js` is the whole backend. The old `functions/` folder is not needed.
 
-## Required setup (Pages settings)
-1. **KV**: create a namespace, bind it as `KV`.
-2. **Admin**: secret `ADMIN_TOKEN` (long random). Open `/admin`, and also protect `/admin*` and `/api/admin/*` with Cloudflare Access.
-3. **SMS** (needed for sign-in): Africa's Talking (`AT_USERNAME`, `AT_API_KEY`, optional `AT_SENDER_ID`; username `sandbox` for testing) or Twilio (`TWILIO_SID`, `TWILIO_TOKEN`, `TWILIO_FROM`).
-4. **Rates are automatic.** `/api/rates` pulls the Reserve Bank of Malawi's published daily rates (Frankfurter, free, no key) and caches them 15 minutes. Optional extras: `ALLRATES_KEY` (AllRatesToday as a second source) or `RATES_URL` (your own feed). If every source fails it serves the last good rates marked as older, else "Rates unavailable". It never uses market or sample rates. `/admin` can publish a manual override and clear it again.
-Fee and limits live in `rates.json` (and the admin page overrides them).
+## Cloudflare Pages settings
+- Framework None, no build command, output directory `/`.
+- KV namespace bound as `KV`.
+- Secrets: `ADMIN_TOKEN`, plus SMS: `AT_USERNAME` + `AT_API_KEY` (Africa's Talking, optional `AT_SENDER_ID`) or `TWILIO_SID` + `TWILIO_TOKEN` + `TWILIO_FROM`.
+- Optional: `ALLRATES_KEY` (second rate source), `RATES_URL` (own rate feed), `TRANSFERS_ENABLED` (leave unset until payments are built).
+- Protect `/admin*` and `/api/admin/*` with Cloudflare Access.
+- Check `/api/health` shows worker, kv, sms and admin all true.
 
-## Behaviour
-- No demo code, sample rates or fake receipts. Without KV and SMS configured, sign-in shows "not available yet".
-- ID photos are deleted when you approve or reject.
-- Install: "Add to Home Screen" (iOS Safari) or the install prompt (Android Chrome). The shell works offline; rates, sign-in and ID checks need a connection. API calls and the admin page are never cached.
+## Admin (`/admin`)
+Sign in with email and password (hashed, 12-hour sessions, lockout after repeated failures). First time: open `/admin`, expand First-time setup, enter the `ADMIN_TOKEN` secret as the setup key plus your email and a 10+ character password. The same form resets a forgotten password. Owners manage rates, fees and the team; reviewers only handle ID checks. Rates update automatically from the bank. Publish an override only when needed and clear it afterwards. Fees and limits are saved separately and apply to all rates. Approve or reject IDs; photos are deleted on decision.
 
-## Turning on transfers later
-Requires a licensed payments partner, server-side payouts and ledger, and Reserve Bank of Malawi authorisation. Replace the disabled button in `stepReview()` in `index.html` once that exists.
+## Server rules
+Only users with an approved ID reach `/api/transfers`. Posting a transfer returns "not open yet" until `TRANSFERS_ENABLED=true` and a licensed payment provider is connected. The approval check is made on the server, not in the browser.
+
+## Before real launch
+Licensed payments partner and Reserve Bank of Malawi authorisation, lawyer review of the privacy notice, `supportEmail` in `rates.json`.

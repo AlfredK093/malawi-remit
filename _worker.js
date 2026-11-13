@@ -6,7 +6,7 @@ const hex = b => [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")
 const sha = async s => hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)));
 const norm = p => { let d = String(p).replace(/\D/g, ""); if (d.startsWith("0")) d = "265" + d.slice(1); return "+" + d; };
 const hasSms = e => (e.AT_API_KEY && e.AT_USERNAME) || (e.TWILIO_SID && e.TWILIO_TOKEN && e.TWILIO_FROM);
-const isAdmin = (r, e) => e.ADMIN_TOKEN && r.headers.get("authorization") === "Bearer " + e.ADMIN_TOKEN;
+const isAdmin = async (r, e) => { const t = (r.headers.get("authorization") || "").replace("Bearer ", ""); return t ? e.KV.get("asess:" + t, "json") : null; };
 const session = async (r, e) => { const t = (r.headers.get("authorization") || "").replace("Bearer ", ""); return t ? e.KV.get("sess:" + t) : null; };
 const kkey = p => "kyc:" + String(p).replace(/\D/g, "");
 
@@ -18,9 +18,10 @@ async function fetchRows(urlFor, headers) {
 }
 async function rates(request, env, ctx) {
   const base = await (await env.ASSETS.fetch(new URL("/rates.json", request.url))).json();
-  if (env.KV) { const m = await env.KV.get("rates", "json"); if (m && m.perUnit) return J({ ...base, ...m, live: true, override: true }); }
+  const fees = env.KV ? (await env.KV.get("fees", "json")) || {} : {};
+  if (env.KV) { const m = await env.KV.get("rates", "json"); if (m && m.perUnit) return J({ ...base, ...m, ...fees, live: true, override: true }); }
   const cache = caches.default, key = new Request(new URL("/api/rates", request.url).toString());
-  const hit = await cache.match(key); if (hit) return hit;
+  const hit = await cache.match(key); if (hit) return J({ ...(await hit.json()), ...fees });
   const tries = [];
   if (env.RATES_URL) tries.push(async () => { const j = await (await fetch(env.RATES_URL)).json(); if (!j.perUnit || !CUR.every(c => num(j.perUnit[c]))) throw 0; return { perUnit: j.perUnit, updated: j.updated, source: j.source || "Bank rate feed" }; });
   tries.push(async () => pack(await fetchRows(c => `https://api.frankfurter.dev/v2/rate/${c}/MWK?providers=RBM`), "Reserve Bank of Malawi official reference rate"));
@@ -32,9 +33,9 @@ async function rates(request, env, ctx) {
   if (!out) return J({ error: "Rates unavailable" }, 503);
   if ((Date.now() - Date.parse(out.updated)) / 864e5 > 4) out.stale = true;
   for (const k of Object.keys(out.perUnit)) out.perUnit[k] = Math.round(out.perUnit[k] * 100) / 100;
-  const res = J({ ...base, ...out, live: true }, 200, out.stale ? "no-store" : "public, max-age=900");
-  if (!out.stale) ctx.waitUntil(cache.put(key, res.clone()));
-  return res;
+  const body = { ...base, ...out, live: true };
+  if (!out.stale) ctx.waitUntil(cache.put(key, J(body, 200, "public, max-age=900")));
+  return J({ ...body, ...fees });
 }
 
 /* ---------- SMS sign-in ---------- */
@@ -84,28 +85,46 @@ async function otp(request, env) {
 async function kyc(request, env) {
   const phone = await session(request, env); if (!phone) return J({ error: "Sign in again" }, 401);
   if (request.method === "GET") { const r = await env.KV.get(kkey(phone), "json"); return J(r ? { status: r.status, reason: r.reason || "", name: r.name } : { status: "none" }); }
+  if (request.method === "DELETE") { await env.KV.delete(kkey(phone)); await env.KV.delete("sess:" + (request.headers.get("authorization") || "").replace("Bearer ", "")); return J({ ok: true }); }
   if (request.method !== "POST") return J({ error: "Method not allowed" }, 405);
   const b = await request.json().catch(() => null);
   const big = s => typeof s !== "string" || s.length > 1500000;
-  if (!b || !b.name || !b.dob || !b.idLast4 || big(b.idImg) || big(b.selfie)) return J({ error: "Invalid submission", detail: !b ? "no data" : (big(b.idImg) || big(b.selfie)) ? "photo too large or missing" : "missing field" }, 400);
+  if (!b || b.consent !== true || !b.name || !b.dob || !b.idLast4 || big(b.idImg) || big(b.selfie)) return J({ error: "Invalid submission", detail: !b ? "no data" : b.consent !== true ? "privacy consent required" : (big(b.idImg) || big(b.selfie)) ? "photo too large or missing" : "missing field" }, 400);
   const old = await env.KV.get(kkey(phone), "json");
   if (old && old.status === "approved") return J({ status: "approved" });
-  await env.KV.put(kkey(phone), JSON.stringify({ phone, name: String(b.name).slice(0, 100), dob: b.dob, idType: String(b.idType).slice(0, 30), idLast4: String(b.idLast4).slice(0, 4), address: String(b.address || "").slice(0, 150), idImg: b.idImg, selfie: b.selfie, status: "pending", submitted: new Date().toISOString() }));
+  await env.KV.put(kkey(phone), JSON.stringify({ phone, name: String(b.name).slice(0, 100), dob: b.dob, idType: String(b.idType).slice(0, 30), idLast4: String(b.idLast4).slice(0, 4), address: String(b.address || "").slice(0, 150), idImg: b.idImg, selfie: b.selfie, status: "pending", consentAt: new Date().toISOString(), consentVersion: "2026-11", submitted: new Date().toISOString() }));
   return J({ status: "pending" });
+}
+
+async function approved(request, env) {
+  const phone = await session(request, env); if (!phone) return { err: J({ error: "Sign in again" }, 401) };
+  const r = await env.KV.get(kkey(phone), "json");
+  if (!r || r.status !== "approved") return { err: J({ error: "Your ID has not been approved yet" }, 403) };
+  return { phone };
+}
+// Only ID-approved users reach this. Transfers stay closed until TRANSFERS_ENABLED is "true" and a payment provider is wired in.
+async function transfers(request, env) {
+  const a = await approved(request, env); if (a.err) return a.err;
+  if (request.method === "POST") {
+    if (env.TRANSFERS_ENABLED !== "true") return J({ error: "Transfers are not open yet" }, 503);
+    return J({ error: "No payment provider is connected" }, 501);
+  }
+  return J((await env.KV.get("tx:" + String(a.phone).replace(/\D/g, ""), "json")) || []);
 }
 
 /* ---------- admin ---------- */
 async function adminRates(request, env) {
-  if (!isAdmin(request, env)) return J({ error: "Unauthorized" }, 401);
+  const adm = await isAdmin(request, env); if (!adm) return J({ error: "Unauthorized" }, 401);
+  if (adm.role !== "owner") return J({ error: "Owner only" }, 403);
   if (request.method === "DELETE") { await env.KV.delete("rates"); return J({ ok: true }); }
   if (request.method === "GET") return J((await env.KV.get("rates", "json")) || {});
   const b = await request.json().catch(() => null);
-  if (!b || !b.perUnit || !CUR.every(c => num(b.perUnit[c])) || !num(b.minFeeMWK) || typeof b.feePct !== "number" || b.feePct < 0 || b.feePct > 10) return J({ error: "Invalid rates" }, 400);
-  const out = { perUnit: b.perUnit, feePct: b.feePct, minFeeMWK: b.minFeeMWK, source: String(b.source || "Reserve Bank of Malawi official rate").slice(0, 120), updated: new Date().toISOString().slice(0, 10) };
+  if (!b || !b.perUnit || !CUR.every(c => num(b.perUnit[c]))) return J({ error: "Invalid rates" }, 400);
+  const out = { perUnit: b.perUnit, source: String(b.source || "Reserve Bank of Malawi official rate").slice(0, 120), updated: new Date().toISOString().slice(0, 10) };
   await env.KV.put("rates", JSON.stringify(out)); return J(out);
 }
 async function adminKyc(request, env) {
-  if (!isAdmin(request, env)) return J({ error: "Unauthorized" }, 401);
+  const adm = await isAdmin(request, env); if (!adm) return J({ error: "Unauthorized" }, 401);
   if (request.method === "GET") {
     const { keys } = await env.KV.list({ prefix: "kyc:" });
     const rows = await Promise.all(keys.map(k => env.KV.get(k.name, "json")));
@@ -115,8 +134,76 @@ async function adminKyc(request, env) {
   if (!b || !["approved", "rejected"].includes(b.decision)) return J({ error: "Invalid decision" }, 400);
   const k = kkey(b.phone), rec = await env.KV.get(k, "json"); if (!rec) return J({ error: "Not found" }, 404);
   delete rec.idImg; delete rec.selfie;
-  Object.assign(rec, { status: b.decision, reason: String(b.reason || "").slice(0, 200), decided: new Date().toISOString() });
+  Object.assign(rec, { decidedBy: adm.email, status: b.decision, reason: String(b.reason || "").slice(0, 200), decided: new Date().toISOString() });
   await env.KV.put(k, JSON.stringify(rec)); return J({ ok: true });
+}
+
+async function adminFees(request, env) {
+  const adm = await isAdmin(request, env); if (!adm) return J({ error: "Unauthorized" }, 401);
+  if (adm.role !== "owner") return J({ error: "Owner only" }, 403);
+  if (request.method === "GET") return J((await env.KV.get("fees", "json")) || {});
+  const b = await request.json().catch(() => null);
+  const ok = b && typeof b.feePct === "number" && b.feePct >= 0 && b.feePct <= 10 && num(b.minFeeMWK) && num(b.minSendMWK) && num(b.maxSendMWK) && b.maxSendMWK > b.minSendMWK;
+  if (!ok) return J({ error: "Invalid fees" }, 400);
+  const out = { feePct: b.feePct, minFeeMWK: b.minFeeMWK, minSendMWK: b.minSendMWK, maxSendMWK: b.maxSendMWK };
+  await env.KV.put("fees", JSON.stringify(out)); return J(out);
+}
+
+/* ---------- admin accounts: email + password, hashed (PBKDF2), 12-hour sessions ---------- */
+const ek = e => "admin:" + String(e).trim().toLowerCase();
+const same = (a, b) => { if (a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; };
+async function hashPw(pw, saltHex) {
+  const salt = saltHex ? Uint8Array.from(saltHex.match(/../g).map(h => parseInt(h, 16))) : crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" }, key, 256);
+  return { salt: hex(salt), hash: hex(bits) };
+}
+const tooMany = async (env, k, max) => (parseInt(await env.KV.get(k)) || 0) >= max;
+const bump = async (env, k) => env.KV.put(k, String((parseInt(await env.KV.get(k)) || 0) + 1), { expirationTtl: 900 });
+const okEmail = e => /^\S+@\S+\.\S+$/.test(e || "");
+
+async function adminAuth(request, env, action) {
+  const m = request.method, b = (m === "POST" || m === "DELETE") ? await request.json().catch(() => ({})) : {};
+  const ip = request.headers.get("cf-connecting-ip") || "x", kip = "alrl:ip:" + ip;
+  if (action === "setup" && m === "POST") {              // create or reset an admin with the master key (ADMIN_TOKEN)
+    if (await tooMany(env, kip, 15)) return J({ error: "Too many attempts. Try again in 15 minutes." }, 429);
+    if (!env.ADMIN_TOKEN || b.setupKey !== env.ADMIN_TOKEN) { await bump(env, kip); return J({ error: "Wrong setup key." }, 401); }
+    if (!okEmail(b.email) || String(b.password || "").length < 10) return J({ error: "Enter a valid email and a password of at least 10 characters." }, 400);
+    const old = await env.KV.get(ek(b.email), "json");
+    await env.KV.put(ek(b.email), JSON.stringify({ ...(await hashPw(b.password)), role: old ? old.role : "owner", created: old ? old.created : new Date().toISOString() }));
+    return J({ ok: true });
+  }
+  if (action === "login" && m === "POST") {
+    const ke = "alrl:e:" + ek(b.email || "");
+    if ((await tooMany(env, kip, 15)) || (await tooMany(env, ke, 5))) return J({ error: "Too many attempts. Try again in 15 minutes." }, 429);
+    const rec = await env.KV.get(ek(b.email || ""), "json");
+    const h = await hashPw(String(b.password || ""), rec ? rec.salt : null);
+    if (!rec || !same(h.hash, rec.hash)) { await bump(env, kip); await bump(env, ke); return J({ error: "Wrong email or password." }, 401); }
+    const token = hex(crypto.getRandomValues(new Uint8Array(32))), email = ek(b.email).slice(6);
+    await env.KV.put("asess:" + token, JSON.stringify({ email, role: rec.role }), { expirationTtl: 43200 });
+    await env.KV.delete(ke);
+    return J({ token, email, role: rec.role });
+  }
+  const adm = await isAdmin(request, env); if (!adm) return J({ error: "Unauthorized" }, 401);
+  if (action === "me") return J(adm);
+  if (action === "logout") { await env.KV.delete("asess:" + (request.headers.get("authorization") || "").replace("Bearer ", "")); return J({ ok: true }); }
+  if (action === "password" && m === "POST") {
+    const rec = await env.KV.get(ek(adm.email), "json");
+    if (!rec || !same((await hashPw(String(b.current || ""), rec.salt)).hash, rec.hash)) return J({ error: "Current password is wrong." }, 400);
+    if (String(b.next || "").length < 10) return J({ error: "New password must be at least 10 characters." }, 400);
+    await env.KV.put(ek(adm.email), JSON.stringify({ ...rec, ...(await hashPw(b.next)) })); return J({ ok: true });
+  }
+  if (action === "users") {
+    if (adm.role !== "owner") return J({ error: "Owner only" }, 403);
+    if (m === "GET") { const { keys } = await env.KV.list({ prefix: "admin:" }); return J(await Promise.all(keys.map(async k => ({ email: k.name.slice(6), role: ((await env.KV.get(k.name, "json")) || {}).role })))); }
+    if (m === "POST") {
+      if (!okEmail(b.email) || String(b.password || "").length < 10) return J({ error: "Enter a valid email and a password of at least 10 characters." }, 400);
+      if (await env.KV.get(ek(b.email))) return J({ error: "That admin already exists." }, 400);
+      await env.KV.put(ek(b.email), JSON.stringify({ ...(await hashPw(b.password)), role: b.role === "owner" ? "owner" : "reviewer", created: new Date().toISOString() })); return J({ ok: true });
+    }
+    if (m === "DELETE") { if (String(b.email).toLowerCase() === adm.email) return J({ error: "You cannot remove yourself." }, 400); await env.KV.delete(ek(b.email)); return J({ ok: true }); }
+  }
+  return J({ error: "Not found" }, 404);
 }
 
 export default {
@@ -129,7 +216,10 @@ export default {
       if (!env.KV) return J({ error: "KV not bound" }, 501);
       if (p === "/api/otp") return otp(request, env);
       if (p === "/api/kyc") return kyc(request, env);
+      if (p === "/api/transfers") return transfers(request, env);
       if (p === "/api/admin/rates") return adminRates(request, env);
+      if (["login", "logout", "me", "setup", "password", "users"].includes(p.slice(11)) && p.startsWith("/api/admin/")) return adminAuth(request, env, p.slice(11));
+      if (p === "/api/admin/fees") return adminFees(request, env);
       if (p === "/api/admin/kyc") return adminKyc(request, env);
       return J({ error: "Not found" }, 404);
     } catch (e) { return J({ error: "Server error", detail: String((e && e.message) || e).slice(0, 120) }, 500); }

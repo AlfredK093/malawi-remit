@@ -1,6 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">
-<title>Malawi Remit admin</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>Malawi Remit admin</title>
 <style>
 :root{--ink:#eaf6f1;--mute:#a9c5ba;--glass:rgba(255,255,255,.09);--glass2:rgba(255,255,255,.15);--edge:rgba(255,255,255,.22);--field:rgba(255,255,255,.08);--green:#32d082;--red:#ff6b81;--btn:linear-gradient(135deg,#0b8a52,#07684a);--bg1:#04161b;--bg2:#093a41;--shadow:rgba(0,0,0,.35);font-family:"Avenir Next","Segoe UI",Roboto,sans-serif}
 @media(prefers-color-scheme:light){:root{--ink:#0f2a24;--mute:#4a6a60;--glass:rgba(255,255,255,.55);--glass2:rgba(255,255,255,.75);--edge:rgba(255,255,255,.9);--field:rgba(255,255,255,.55);--green:#0b7a3e;--red:#c8102e;--bg1:#e3f5ec;--bg2:#bfe3f1;--shadow:rgba(20,70,60,.18)}}
@@ -51,46 +50,60 @@ button:disabled{opacity:.5;cursor:not-allowed}
 @media(prefers-reduced-motion:reduce){.ok,.orbs i{animation:none}button{transition:none}}
 main{max-width:760px}.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
 .k{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}.k div{flex:1 1 200px}.s{font-size:14px;color:var(--mute)}.msg{font-size:14px;min-height:20px;margin-top:8px;color:var(--mute)}
-img{max-width:100%;max-height:260px;border-radius:12px;border:1px solid var(--edge)}button{width:auto;margin:12px 8px 0 0;padding:11px 18px}button.no{background:linear-gradient(135deg,#d13b52,#9c1d33)}</style></head><body><div class="orbs"><i></i><i></i><i></i></div><main>
-<header><div class="logo"></div><h1>Malawi Remit admin</h1></header>
-<div class="card"><label for="tok">Admin token</label><input id="tok" type="password" autocomplete="off"><button id="in">Sign in</button><div class="msg" id="m0"></div></div>
+img{max-width:100%;max-height:260px;border-radius:12px;border:1px solid var(--edge)}button{width:auto;margin:12px 8px 0 0;padding:11px 18px}button.no{background:linear-gradient(135deg,#d13b52,#9c1d33)}[hidden]{display:none!important}details{margin-top:14px}summary{cursor:pointer;color:var(--mute);font-size:14px}</style></head><body>
+<div class="orbs"><i></i><i></i><i></i></div><main>
+<header><div class="logo"></div><h1>Malawi Remit admin</h1><span id="who" class="s" style="margin-left:auto"></span><button id="lo" class="alt" hidden style="width:auto;margin:0;padding:9px 14px">Sign out</button></header>
+<div id="login" hidden><div class="card"><h2>Admin sign in</h2>
+ <label for="em">Email</label><input id="em" type="email" autocomplete="username"><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password">
+ <button id="in">Sign in</button><div class="msg" id="m0"></div>
+ <details><summary>First-time setup or forgotten password</summary><div class="s" style="margin-top:8px">Use the ADMIN_TOKEN secret from Cloudflare as the setup key. Entering an existing email resets that admin's password.</div>
+ <label for="sk">Setup key</label><input id="sk" type="password" autocomplete="off"><label for="se">Email</label><input id="se" type="email"><label for="sp">New password (10+ characters)</label><input id="sp" type="password" autocomplete="new-password">
+ <button id="su">Save admin account</button><div class="msg" id="ms"></div></details></div></div>
 <div id="panel" hidden>
- <div class="card"><h2>Bank rates (MWK per 1 unit)</h2>
-  <div class="s" id="live">Loading live rates</div><div class="s">Rates update automatically from the Reserve Bank of Malawi. Publish below only to override them.</div>
-  <div class="g"><div><label>USD</label><input id="USD" inputmode="decimal"></div><div><label>GBP</label><input id="GBP" inputmode="decimal"></div><div><label>EUR</label><input id="EUR" inputmode="decimal"></div><div><label>ZAR</label><input id="ZAR" inputmode="decimal"></div></div>
-  <div class="g"><div><label>Fee %</label><input id="fee" inputmode="decimal"></div><div><label>Minimum fee (MWK)</label><input id="minfee" inputmode="decimal"></div></div>
-  <label>Source label shown to users</label><input id="src" value="Reserve Bank of Malawi official rate">
-  <button id="sv">Publish override</button><button id="clr" class="no">Use automatic rates</button><div class="msg" id="m1"></div></div>
  <div class="card"><h2>ID checks</h2><div id="q" class="s">Loading</div><button id="rf">Refresh</button></div>
+ <div class="card own"><h2>Bank rates (MWK per 1 unit)</h2><div class="s" id="live">Loading live rates</div><div class="s">Rates update automatically from the Reserve Bank of Malawi. Publish below only to override them.</div>
+  <div class="g"><div><label>USD</label><input id="USD" inputmode="decimal"></div><div><label>GBP</label><input id="GBP" inputmode="decimal"></div><div><label>EUR</label><input id="EUR" inputmode="decimal"></div><div><label>ZAR</label><input id="ZAR" inputmode="decimal"></div></div>
+  <label>Source label shown to users</label><input id="src" value="Reserve Bank of Malawi official rate"><button id="sv">Publish override</button><button id="clr" class="no">Use automatic rates</button><div class="msg" id="m1"></div></div>
+ <div class="card own"><h2>Fees and limits</h2><div class="g"><div><label>Fee %</label><input id="fee" inputmode="decimal"></div><div><label>Minimum fee (MWK)</label><input id="minfee" inputmode="decimal"></div><div><label>Minimum send (MWK)</label><input id="minsend" inputmode="decimal"></div><div><label>Maximum send (MWK)</label><input id="maxsend" inputmode="decimal"></div></div><button id="svf">Save fees</button><div class="msg" id="m2"></div></div>
+ <div class="card own"><h2>Team</h2><div id="team" class="s">Loading</div>
+  <div class="g"><div><label>Email</label><input id="te" type="email"></div><div><label>Password (10+)</label><input id="tp" type="password" autocomplete="new-password"></div><div><label>Role</label><select id="tr"><option value="reviewer">Reviewer (ID checks only)</option><option value="owner">Owner (everything)</option></select></div></div>
+  <button id="ta">Add admin</button><div class="msg" id="m3"></div></div>
+ <div class="card"><h2>Change my password</h2><div class="g"><div><label>Current</label><input id="pc" type="password" autocomplete="current-password"></div><div><label>New (10+)</label><input id="pn" type="password" autocomplete="new-password"></div></div><button id="pb">Change password</button><div class="msg" id="m4"></div></div>
 </div></main>
 <script>
 const $=s=>document.querySelector(s),esc=t=>String(t??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-let T=sessionStorage.getItem("t")||"";
+let T=sessionStorage.getItem("at")||"",ME=null;
 const api=(p,b,m)=>fetch(p,{method:m||(b?"POST":"GET"),headers:{authorization:"Bearer "+T,"content-type":"application/json"},body:b?JSON.stringify(b):undefined});
-const why=r=>r.status===401?"Wrong token.":r.status===501?"KV is not bound to this project yet. See README.":"Request failed.";
-async function load(){
-  const r=await api("/api/admin/rates");if(!r.ok){$("#m0").textContent=why(r);return}
-  sessionStorage.setItem("t",T);$("#panel").hidden=false;$("#m0").textContent="Signed in.";
-  const j=await r.json();if(j.perUnit){for(const c of["USD","GBP","EUR","ZAR"])$("#"+c).value=j.perUnit[c];$("#fee").value=j.feePct;$("#minfee").value=j.minFeeMWK;$("#src").value=j.source}
-  queue();live()}
-async function queue(){
-  const r=await api("/api/admin/kyc");if(!r.ok){$("#q").textContent=why(r);return}
+const why=async r=>{const j=await r.json().catch(()=>({}));return j.error||(r.status===501?"KV is not bound to this project.":"Request failed.")};
+const num=id=>parseFloat($("#"+id).value);
+function out(){T="";ME=null;sessionStorage.removeItem("at");$("#panel").hidden=true;$("#lo").hidden=true;$("#who").textContent="";$("#login").hidden=false}
+async function boot(){if(!T)return out();const r=await api("/api/admin/me");if(!r.ok)return out();ME=await r.json();show()}
+function show(){$("#login").hidden=true;$("#panel").hidden=false;$("#lo").hidden=false;$("#who").textContent=ME.email+" ("+ME.role+")";
+  document.querySelectorAll(".own").forEach(e=>e.hidden=ME.role!=="owner");queue();if(ME.role==="owner"){live();ratesLoad();feesLoad();team()}}
+$("#in").onclick=async()=>{$("#m0").textContent="";const r=await fetch("/api/admin/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email:$("#em").value,password:$("#pw").value})});
+  if(!r.ok)return $("#m0").textContent=await why(r);const j=await r.json();T=j.token;sessionStorage.setItem("at",T);$("#pw").value="";ME={email:j.email,role:j.role};show()};
+$("#su").onclick=async()=>{const r=await fetch("/api/admin/setup",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({setupKey:$("#sk").value,email:$("#se").value,password:$("#sp").value})});
+  $("#ms").textContent=r.ok?"Saved. Now sign in above.":await why(r);if(r.ok){$("#sk").value=$("#sp").value=""}};
+$("#lo").onclick=async()=>{await api("/api/admin/logout",{}).catch(()=>{});out()};
+async function queue(){const r=await api("/api/admin/kyc");if(r.status===401)return out();if(!r.ok){$("#q").textContent=await why(r);return}
   const rows=await r.json(),p=rows.filter(x=>x.status==="pending"),d=rows.filter(x=>x.status!=="pending");
-  $("#q").innerHTML=`<div class="s">${p.length} waiting, ${d.length} decided. Updates every 15 seconds.</div>`+(p.length?p.map(x=>`<div class="card"><b>${esc(x.name)}</b> ${esc(x.phone)}<div class="s">Born ${esc(x.dob)}. ${esc(x.idType)} ending ${esc(x.idLast4)}. ${esc(x.address)}. Sent ${esc(x.submitted.slice(0,16).replace("T"," "))} UTC</div>
+  $("#q").innerHTML=`<div class="s">${p.length} waiting, ${d.length} decided. Updates every 15 seconds.</div>`+(p.length?p.map(x=>`<div class="card"><b>${esc(x.name)}</b> ${esc(x.phone)}<div class="s">Born ${esc(x.dob)}. ${esc(x.idType)} ending ${esc(x.idLast4)}. ${esc(x.address)}. Sent ${esc(x.submitted.slice(0,16).replace("T"," "))} UTC. Privacy consent: ${esc((x.consentAt||"none").slice(0,10))}</div>
    <div class="k"><div><img src="${esc(x.idImg)}" alt="ID"></div><div><img src="${esc(x.selfie)}" alt="Selfie"></div></div>
-   <button data-p="${esc(x.phone)}" data-d="approved">Approve</button><button class="no" data-p="${esc(x.phone)}" data-d="rejected">Reject</button></div>`).join(""):"No checks waiting.")+
-   (d.length?`<h2>Decided</h2>`+d.map(x=>`<div class="s">${esc(x.name)}, ${esc(x.phone)}: ${esc(x.status)}${x.reason?" ("+esc(x.reason)+")":""}</div>`).join(""):"")}
+   <button data-p="${esc(x.phone)}" data-d="approved">Approve</button><button class="no" data-p="${esc(x.phone)}" data-d="rejected">Reject</button></div>`).join(""):"")+
+   (d.length?`<h2>Decided</h2>`+d.map(x=>`<div class="s">${esc(x.name)}, ${esc(x.phone)}: ${esc(x.status)}${x.reason?" ("+esc(x.reason)+")":""}${x.decidedBy?" by "+esc(x.decidedBy):""}</div>`).join(""):"")}
 $("#q").onclick=async e=>{const b=e.target.closest("button[data-d]");if(!b)return;
   const reason=b.dataset.d==="rejected"?prompt("Reason shown to the user (e.g. photo unclear):")||"":"";
-  const r=await api("/api/admin/kyc",{phone:b.dataset.p,decision:b.dataset.d,reason});r.ok?queue():alert(why(r))};
-$("#in").onclick=()=>{T=$("#tok").value.trim();load()};$("#rf").onclick=queue;
-$("#sv").onclick=async()=>{const n=id=>parseFloat($("#"+id).value);
-  const r=await api("/api/admin/rates",{perUnit:{USD:n("USD"),GBP:n("GBP"),EUR:n("EUR"),ZAR:n("ZAR")},feePct:n("fee"),minFeeMWK:n("minfee"),source:$("#src").value});
-  setTimeout(live,300);$("#m1").textContent=r.ok?"Published. Users see the new rates on their next load.":r.status===400?"Check every field has a valid number.":why(r)};
-async function live(){try{const j=await(await fetch("/api/rates",{cache:"no-store"})).json();
-  $("#live").textContent=j.perUnit?`Live now: 1 USD = MWK ${j.perUnit.USD} (${j.source}, dated ${j.updated}${j.override?", MANUAL OVERRIDE":""}${j.stale?", STALE":""})`:"No rate source is reachable right now."}catch{$("#live").textContent="Could not load live rates."}}
-$("#clr").onclick=async()=>{if(!confirm("Remove the manual override and use automatic Reserve Bank of Malawi rates?"))return;
-  const r=await api("/api/admin/rates",null,"DELETE");$("#m1").textContent=r.ok?"Override removed. Automatic rates are live.":why(r);live()};
-setInterval(()=>{if(!$("#panel").hidden)queue()},15000);
-if(T)load();
+  const r=await api("/api/admin/kyc",{phone:b.dataset.p,decision:b.dataset.d,reason});r.ok?queue():alert(await why(r))};
+$("#rf").onclick=queue;setInterval(()=>{if(!$("#panel").hidden)queue()},15000);
+async function live(){try{const j=await(await fetch("/api/rates",{cache:"no-store"})).json();$("#live").textContent=j.perUnit?`Live now: 1 USD = MWK ${j.perUnit.USD} (${j.source}, dated ${j.updated}${j.override?", MANUAL OVERRIDE":""}${j.stale?", STALE":""})`:"No rate source is reachable right now."}catch{$("#live").textContent="Could not load live rates."}}
+async function ratesLoad(){const r=await api("/api/admin/rates");if(!r.ok)return;const j=await r.json();if(j.perUnit){for(const c of["USD","GBP","EUR","ZAR"])$("#"+c).value=j.perUnit[c];$("#src").value=j.source}}
+$("#sv").onclick=async()=>{const r=await api("/api/admin/rates",{perUnit:{USD:num("USD"),GBP:num("GBP"),EUR:num("EUR"),ZAR:num("ZAR")},source:$("#src").value});setTimeout(live,300);$("#m1").textContent=r.ok?"Published. Users see the new rates on their next load.":r.status===400?"Check every rate is a valid number.":await why(r)};
+$("#clr").onclick=async()=>{if(!confirm("Remove the manual override and use automatic Reserve Bank of Malawi rates?"))return;const r=await api("/api/admin/rates",null,"DELETE");$("#m1").textContent=r.ok?"Override removed. Automatic rates are live.":await why(r);live()};
+async function feesLoad(){const r=await api("/api/admin/fees");if(!r.ok)return;const j=await r.json(),l=await(await fetch("/api/rates",{cache:"no-store"})).json(),f=x=>j[x]??l[x];$("#fee").value=f("feePct");$("#minfee").value=f("minFeeMWK");$("#minsend").value=f("minSendMWK");$("#maxsend").value=f("maxSendMWK")}
+$("#svf").onclick=async()=>{const r=await api("/api/admin/fees",{feePct:num("fee"),minFeeMWK:num("minfee"),minSendMWK:num("minsend"),maxSendMWK:num("maxsend")});$("#m2").textContent=r.ok?"Saved. Users see the new fees right away.":r.status===400?"Check every field is a valid number (maximum send must be above minimum).":await why(r)};
+async function team(){const r=await api("/api/admin/users");if(!r.ok)return;const u=await r.json();$("#team").innerHTML=u.map(x=>`<div class="s">${esc(x.email)} (${esc(x.role)}) ${x.email===ME.email?"":`<a href="#" data-rm="${esc(x.email)}">remove</a>`}</div>`).join("")}
+$("#team").onclick=async e=>{const a=e.target.closest("[data-rm]");if(!a)return;e.preventDefault();if(!confirm("Remove "+a.dataset.rm+"?"))return;const r=await api("/api/admin/users",{email:a.dataset.rm},"DELETE");r.ok?team():alert(await why(r))};
+$("#ta").onclick=async()=>{const r=await api("/api/admin/users",{email:$("#te").value,password:$("#tp").value,role:$("#tr").value});$("#m3").textContent=r.ok?"Admin added.":await why(r);if(r.ok){$("#te").value=$("#tp").value="";team()}};
+$("#pb").onclick=async()=>{const r=await api("/api/admin/password",{current:$("#pc").value,next:$("#pn").value});$("#m4").textContent=r.ok?"Password changed.":await why(r);if(r.ok)$("#pc").value=$("#pn").value=""};
+boot();
 </script></body></html>

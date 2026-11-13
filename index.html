@@ -74,17 +74,21 @@ header{display:flex;align-items:center;gap:10px;margin-bottom:20px;min-height:44
 .grn{color:var(--green);font-weight:700}
 input,select{min-height:52px}button{min-height:54px}
 @media(prefers-reduced-motion:reduce){.card,.hero svg{animation:none}}
+a{color:var(--green)}.priv h3{font-size:15px;margin:16px 0 4px}.priv h3:first-child{margin-top:0}.priv p{margin:0;font-size:14px;color:var(--mute);line-height:1.55}
+.tabs button{max-width:140px}.lnk{display:block;text-align:center;margin-top:14px;font-size:14px}
+[hidden]{display:none!important}
+#off{position:fixed;top:0;left:0;right:0;z-index:5;padding:calc(8px + env(safe-area-inset-top)) 8px 8px;text-align:center;font-size:13px;background:#b3261e;color:#fff}
 </style></head><body>
 <div class="orbs"><i></i><i></i><i></i></div>
-<main><header id="hd"></header><div id="app"></div></main>
-<div id="tabs" class="tabs" hidden><button data-a="tab" data-t="send">Send</button><button class="alt" data-a="tab" data-t="acct">Account</button></div>
+<div id="off" hidden>You are offline. Rates and sign-in need a connection.</div><main><header id="hd"></header><div id="app"></div></main>
+<div id="tabs" class="tabs" hidden><button data-a="tab" data-t="send">Send</button><button class="alt" data-a="tab" data-t="act">Activity</button><button class="alt" data-a="tab" data-t="acct">Account</button></div>
 <script>
 const $=s=>document.querySelector(s),esc=t=>String(t??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])),fmt=(n,d=2)=>Number(n).toLocaleString("en-GB",{minimumFractionDigits:d,maximumFractionDigits:d});
 const LOGO=n=>`<svg width="${n}" height="${n}" viewBox="0 0 64 64" aria-label="Malawi Remit"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#16c47f"/><stop offset="1" stop-color="#0a5f6e"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(#lg)"/><circle cx="26" cy="40" r="11" fill="#ff4d5e"/><path d="M18 48C32 48 42 40 45 24" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/><path d="M37 22L46 18L48 28" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const METHODS=["Airtel Money","TNM Mpamba","Bank account"];
 const S={v:"boot",rates:null,user:null,tab:"send",step:0,wiz:1,mode:"in",note:"",
  q:{amt:"",cur:"USD",method:METHODS[0]},r:{name:"",country:"",bank:"",acct:"",swift:""},
- k:{fn:"",dob:"",adr:"",idt:"National ID",idn:"",idImg:"",selfie:""},a:{ph:"",ag:false,code:"",phone:"",cool:0}};
+ k:{ag:false,fn:"",dob:"",adr:"",idt:"National ID",idn:"",idImg:"",selfie:""},a:{ph:"",ag:false,code:"",phone:"",cool:0}};
 try{S.user=JSON.parse(localStorage.getItem("mwuser")||"null")}catch{}
 if(S.user&&!S.user.token)S.user=null;
 const save=()=>{try{S.user?localStorage.setItem("mwuser",JSON.stringify(S.user)):localStorage.removeItem("mwuser")}catch{}};
@@ -93,12 +97,13 @@ const fail=m=>{const e=$("#err");if(e)e.textContent=m};
 const busy=on=>{const b=$("#go");if(b)b.disabled=on};
 const shrink=f=>new Promise(r=>{const i=new Image();i.onload=()=>{const k=Math.min(1,800/Math.max(i.width,i.height)),c=document.createElement("canvas");c.width=i.width*k;c.height=i.height*k;c.getContext("2d").drawImage(i,0,0,c.width,c.height);r(c.toDataURL("image/jpeg",.6))};i.onerror=()=>r(null);i.src=URL.createObjectURL(f)});
 
+function loadTx(){api("/api/transfers").then(r=>r.json()).then(j=>{S.tx=Array.isArray(j)?j:[]}).catch(()=>{S.tx=[]}).finally(()=>{if(S.v==="home"&&S.tab==="act")render()})}
 function loadRates(){return fetch("/api/rates",{cache:"no-store"}).then(r=>{if(!r.ok)throw 0;return r.json()}).then(j=>{S.rates=j}).catch(()=>{})}
 async function sync(){if(!S.user)return;
   try{const r=await api("/api/kyc");if(r.status===401){S.user=null;save();S.note="Your session expired. Please sign in again.";return}
     const j=await r.json();S.user.status=j.status;S.user.name=j.name||S.user.name;S.user.reason=j.reason||"";save()}catch{}}
 function route(){if(!S.user){if(!["auth","otp"].includes(S.v))S.v="welcome";return}
-  const s=S.user.status;S.v=s==="approved"?"home":s==="pending"?"pending":"kyc";if(S.v==="kyc")S.wiz=1}
+  const s=S.user.status;S.v=s==="approved"?"home":s==="pending"?"pending":"kyc";if(S.v==="kyc"){S.wiz=1;S.k.ag=S.k.ag||S.a.ag}}
 function signOut(n){S.user=null;save();S.note=n||"";S.v="welcome";render()}
 
 const quote=()=>{const R=S.rates,a=parseFloat(S.q.amt)||0,rate=R.perUnit[S.q.cur],fee=a?Math.max(R.minFeeMWK,a*R.feePct/100):0;return{a,rate,fee,recv:a>fee?(a-fee)/rate:0}};
@@ -113,26 +118,32 @@ const V={
   if(R){const a=500000,fee=Math.max(R.minFeeMWK,a*R.feePct/100);ex=`<div class="card"><div class="src" style="margin:0 0 6px">EXAMPLE AT TODAY'S BANK RATE</div><div class="line"><span>You send</span><span>MWK ${fmt(a,0)}</span></div><div class="line"><span>Fee</span><span>MWK ${fmt(fee,0)}</span></div><div class="line"><span>They receive</span><span class="grn">${fmt((a-fee)/R.perUnit.USD)} USD</span></div></div>`}
   return`<div class="card hero">${LOGO(88)}<div class="big2">Your kwacha, <span class="grad">anywhere</span>.</div><div class="hint" style="font-size:15px;margin:0 0 8px">Send money abroad at the real Reserve Bank of Malawi rate. No hidden markups.</div><button data-a="go" data-m="up">Get started</button><button class="alt" data-a="go" data-m="in">I have an account</button><div class="err">${esc(S.note)}</div></div>
   ${R?`<div class="chips">${Object.keys(R.perUnit).map(c=>`<div class="chip2"><b>${c}</b>MWK ${fmt(R.perUnit[c])}</div>`).join("")}</div>`:""}${ex}
-  <div class="feat"><div><b>Bank rate</b>No markup</div><div><b>Clear fees</b>Shown first</div><div><b>Verified</b>ID checked</div></div>`},
- auth:()=>{const up=S.mode==="up";return`<div class="card"><h2>${up?"Create your account":"Welcome back"}</h2><div class="hint" style="margin:0">We will text you a 6-digit code.</div>${field("Mobile number","ph","a.ph",'type="tel" inputmode="tel" placeholder="+265 99 123 4567"')}${up?`<label class="chk"><input type="checkbox" data-s="a.ag" ${S.a.ag?"checked":""}> I agree to my details being used to verify my identity and provide this service.</label>`:""}<div class="err" id="err">${esc(S.note)}</div><button id="go" data-a="send">Send code</button><button class="alt" data-a="swap">${up?"I already have an account":"Create a new account"}</button></div>`},
+  <div class="feat"><div><b>Bank rate</b>No markup</div><div><b>Clear fees</b>${R?`${R.feePct}%, min MWK ${fmt(R.minFeeMWK,0)}`:"Shown first"}</div><div><b>Verified</b>ID checked</div></div><a href="#" data-a="priv" class="lnk">Privacy notice</a>`},
+ auth:()=>{const up=S.mode==="up";return`<div class="card"><h2>${up?"Create your account":"Welcome back"}</h2><div class="hint" style="margin:0">We will text you a 6-digit code.</div>${field("Mobile number","ph","a.ph",'type="tel" inputmode="tel" placeholder="+265 99 123 4567"')}${up?`<label class="chk"><input type="checkbox" data-s="a.ag" ${S.a.ag?"checked":""}> I have read the <a href="#" data-a="priv">Privacy notice</a> and agree to my details being used to verify my identity and provide this service.</label>`:""}<div class="err" id="err">${esc(S.note)}</div><button id="go" data-a="send">Send code</button><button class="alt" data-a="swap">${up?"I already have an account":"Create a new account"}</button></div>`},
  otp:()=>`<div class="card"><h2>Enter your code</h2><div class="hint" style="margin:0">Sent to ${esc(S.a.phone)}</div>${field("6-digit code","cd","a.code",'inputmode="numeric" maxlength="6" autocomplete="one-time-code"')}<div class="err" id="err"></div><button id="go" data-a="verify">Verify</button><button class="alt" id="rs" data-a="resend">Resend code</button></div>`,
  kyc:()=>{const k=S.k,w=S.wiz,note=S.user.status==="rejected"?`<div class="err">Your last check was not approved${S.user.reason?": "+esc(S.user.reason):""}. Please check your details and submit again.</div>`:"";
-  const body=w===1?`${field("Full legal name","fn","k.fn",'autocomplete="name"')}${field("Date of birth","dob","k.dob",'type="date"')}${field("Home address (town or district)","adr","k.adr")}`
+  const body=w===1?`${field("Full legal name","fn","k.fn",'autocomplete="name"')}${field("Date of birth","dob","k.dob",'type="date"')}${field("Home address (town or district)","adr","k.adr")}<label class="chk"><input type="checkbox" data-s="k.ag" ${k.ag?"checked":""}> I have read the <a href="#" data-a="priv">Privacy notice</a> and agree to my details being used to verify my identity.</label>`
    :w===2?`<label for="idt">ID type</label><select id="idt" data-s="k.idt">${["National ID","Passport","Driving licence"].map(x=>`<option ${x===k.idt?"selected":""}>${x}</option>`).join("")}</select>${field("ID number","idn","k.idn",'autocomplete="off"')}${upload("Photo of your ID","idImg","environment")}`
    :`${upload("Selfie","selfie","user")}<div class="line" style="margin-top:12px"><span>Name</span><span>${esc(k.fn)}</span></div><div class="line"><span>ID</span><span>${esc(k.idt)} ending ${esc(k.idn.slice(-4))}</span></div>`;
   return`${prog(w)}<div class="card"><h2>${["","Your details","Your ID","Take a selfie"][w]}</h2><div class="hint" style="margin:0">Step ${w} of 3. Only our verification team sees your photos, and they are deleted once reviewed.</div>${note}${body}<div class="err" id="err"></div><button id="go" data-a="next">${w===3?"Submit for review":"Continue"}</button>${w>1?`<button class="alt" data-a="prev">Back</button>`:`<button class="alt" data-a="out">Sign out</button>`}</div>`},
  pending:()=>`<div class="card center"><div class="dot">&#8987;</div><h2>We are reviewing your ID</h2><div class="hint">You can close this page. Sign in again any time to see your result. This screen updates by itself.</div><button class="alt" data-a="check">Check now</button><button class="alt" data-a="out">Sign out</button></div>`,
- home:()=>S.tab==="acct"?V.acct():[V.amount,V.recip,V.review][S.step](),
- acct:()=>`<div class="card center"><div class="dot">${esc((S.user.name||"?")[0])}</div><h2>${esc(S.user.name||"Your account")}</h2><div class="line"><span>Phone</span><span>${esc(S.user.phone)}</span></div><div class="line"><span>ID check</span><span>Verified</span></div><button class="alt" data-a="out">Sign out</button></div>`,
+ home:()=>S.tab==="acct"?V.acct():S.tab==="act"?V.act():[V.amount,V.recip,V.review][S.step](),
+ act:()=>{const t=S.tx,h=`<div class="big2" style="font-size:24px;margin:0 0 12px">Activity</div>`;
+  if(!t)return h+`<div class="card center"><div class="hint">Loading</div></div>`;
+  if(!t.length)return h+`<div class="card center"><div class="dot">&#8599;</div><h2>No transfers yet</h2><div class="hint">Sending money opens soon. Your transfers will appear here with their status and receipt.</div><button data-a="tab" data-t="send">See today's rate</button></div>`;
+  return h+`<div class="card">${t.map(x=>`<div class="line"><span>${esc(x.name)}<br><small>${esc(x.date)} - ${esc(x.ref)}</small></span><span>${fmt(x.recv)} ${esc(x.cur)}<br><small>${esc(x.status)}</small></span></div>`).join("")}</div>`},
+ help:()=>{const e=S.rates&&S.rates.supportEmail,R=S.rates;return`<div class="big2" style="font-size:24px;margin:0 0 12px">Help and contact</div><div class="card priv"><h3>Why do I need to verify my ID?</h3><p>We check who you are before you can send money, to keep your account and your money safe.</p><h3>How is the rate set?</h3><p>We use the Reserve Bank of Malawi's published daily rate with no markup from us.</p><h3>What does it cost?</h3><p>${R?`A fee of ${R.feePct}% of the amount, with a minimum of MWK ${fmt(R.minFeeMWK,0)}. You always see the fee before you decide.`:"You always see the fee before you decide."}</p><h3>When can I send money?</h3><p>Sending is not open yet. Your account and ID check are ready, so you can send as soon as it opens.</p><h3>Need a person?</h3><p>${e?"Email "+esc(e)+".":"Contact the team that invited you to the app."}</p></div>`},
+ privacy:()=>{const e=S.rates&&S.rates.supportEmail;return`<div class="big2" style="font-size:24px;margin:0 0 12px">Privacy notice</div><div class="card priv"><h3>What we collect</h3><p>Your mobile number; your name, date of birth and home address; your ID type and the last 4 digits of your ID number; a photo of your ID and a selfie.</p><h3>Why</h3><p>To confirm who you are before you can send money, to keep your account secure and to run the service.</p><h3>Who sees it</h3><p>Only our verification team sees your ID photo and selfie. Your sign-in code is sent by SMS through Africa's Talking, and your data is stored with Cloudflare. We do not sell your data.</p><h3>How long</h3><p>ID photos and selfies are deleted as soon as we approve or reject your check. Your other details are kept while you have an account.</p><h3>Your choices</h3><p>You can delete your account and data at any time from the Account tab. ${e?"Questions: "+esc(e)+".":"Contact our support team with any questions."}</p></div>`},
+ acct:()=>`<div class="card center"><div class="dot">${esc((S.user.name||"?")[0])}</div><h2>${esc(S.user.name||"Your account")}</h2><div class="line"><span>Phone</span><span>${esc(S.user.phone)}</span></div><div class="line"><span>ID check</span><span>Verified</span></div><button class="alt" data-a="help">Help and contact</button><button class="alt" data-a="priv">Privacy notice</button><button class="alt" data-a="out">Sign out</button><button class="alt" data-a="del" style="color:var(--red)">Delete my account and data</button></div>`,
  amount:()=>{const R=S.rates;if(!R)return`<div class="card"><h2>Rates unavailable</h2><div class="hint">We could not load today's rates.</div><button data-a="rates">Try again</button></div>`;
   return`<div class="big2" style="font-size:24px;margin:0 0 12px">Hello, ${esc((S.user.name||"there").split(" ")[0])}</div><div class="chips">${Object.keys(R.perUnit).map(c=>`<button class="${c===S.q.cur?"":"alt"}" data-a="cur" data-c="${c}">${c}</button>`).join("")}</div>${prog(1)}<div class="card"><label style="margin-top:0">You send</label><div class="big"><span class="chip">MWK</span><input id="amt" data-s="q.amt" inputmode="decimal" placeholder="0" value="${esc(S.q.amt)}"></div><label>They receive</label><div class="big"><span class="recv" id="recv"></span><select id="cur" data-s="q.cur">${Object.keys(R.perUnit).map(c=>`<option ${c===S.q.cur?"selected":""}>${c}</option>`).join("")}</select></div><div class="ratepill">1 ${S.q.cur} = MWK ${fmt(R.perUnit[S.q.cur])}</div><div class="src">${esc(R.source)}. Rate date: ${esc(R.updated)}.${R.stale?" Latest rate we could get.":""}</div></div>
-  <div class="card"><div class="line"><span>Transfer fee</span><span id="fee"></span></div><label>Pay with</label><select data-s="q.method">${METHODS.map(m=>`<option ${m===S.q.method?"selected":""}>${m}</option>`).join("")}</select><div class="err" id="err"></div><button data-a="toR">Add recipient</button></div>`},
+  <div class="card"><div class="line"><span>Transfer fee</span><span id="fee"></span></div><div class="hint" id="feenote" style="margin-top:0"></div><label>Pay with</label><select data-s="q.method">${METHODS.map(m=>`<option ${m===S.q.method?"selected":""}>${m}</option>`).join("")}</select><div class="err" id="err"></div><button data-a="toR">Add recipient</button></div>`},
  recip:()=>`${prog(2)}<div class="card"><h2>Who are you sending to?</h2>${field("Full name (as on bank account)","rn","r.name")}${field("Country","rc","r.country")}${field("Bank name","rb","r.bank")}${field("Account number or IBAN","ra","r.acct",'autocomplete="off"')}${field("SWIFT/BIC code","rs2","r.swift",'autocapitalize="characters"')}<div class="err" id="err"></div><button data-a="toV">Review</button><button class="alt" data-a="s0">Back</button></div>`,
- review:()=>{const q=quote(),r=S.r;return`${prog(3)}<div class="card"><h2>Review</h2><div class="line"><span>You send</span><span>MWK ${fmt(q.a,0)}</span></div><div class="line"><span>Bank rate</span><span>1 ${S.q.cur} = MWK ${fmt(q.rate)}</span></div><div class="line"><span>Fee</span><span>MWK ${fmt(q.fee,0)}</span></div><div class="line"><span>They receive</span><span><b>${fmt(q.recv)} ${S.q.cur}</b></span></div><div class="line"><span>Recipient</span><span>${esc(r.name)}<br>${esc(r.bank)}, ${esc(r.country)}</span></div><button disabled>Transfers open soon</button><div class="hint">Sending money is not switched on yet, so nothing is charged or sent.</div><button class="alt" data-a="s1">Back</button></div>`}
+ review:()=>{const q=quote(),r=S.r;return`${prog(3)}<div class="card"><h2>Review</h2><div class="line"><span>You send</span><span>MWK ${fmt(q.a,0)}</span></div><div class="line"><span>Bank rate</span><span>1 ${S.q.cur} = MWK ${fmt(q.rate)}</span></div><div class="line"><span>Fee (${S.rates.feePct}%, min MWK ${fmt(S.rates.minFeeMWK,0)})</span><span>MWK ${fmt(q.fee,0)}</span></div><div class="line"><span>They receive</span><span><b>${fmt(q.recv)} ${S.q.cur}</b></span></div><div class="line"><span>Recipient</span><span>${esc(r.name)}<br>${esc(r.bank)}, ${esc(r.country)}</span></div><button disabled>Transfers open soon</button><div class="hint">Sending money is not switched on yet, so nothing is charged or sent.</div><button class="alt" data-a="s1">Back</button></div>`}
 };
-function upd(){if(!$("#fee")||!S.rates)return;const q=quote();$("#fee").textContent=q.a?`MWK ${fmt(q.fee,0)}`:"-";$("#recv").textContent=fmt(q.recv)}
-function canBack(){return S.v==="auth"||S.v==="otp"||(S.v==="kyc"&&S.wiz>1)||(S.v==="home"&&S.tab==="send"&&S.step>0)}
-function goBack(){if(S.v==="otp")S.v="auth";else if(S.v==="auth")S.v="welcome";else if(S.v==="kyc")S.wiz--;else if(S.v==="home")S.step--;S.note="";render()}
+function upd(){if(!$("#fee")||!S.rates)return;const q=quote();$("#fee").textContent=q.a?`MWK ${fmt(q.fee,0)}`:"-";$("#recv").textContent=fmt(q.recv);const R=S.rates;$("#feenote").textContent=`Fee is ${R.feePct}% of the amount, with a minimum of MWK ${fmt(R.minFeeMWK,0)}.${q.a&&q.a*R.feePct/100<R.minFeeMWK?" The minimum fee applies to this amount.":""} You can send MWK ${fmt(R.minSendMWK,0)} to MWK ${fmt(R.maxSendMWK,0)}.`}
+function canBack(){return S.v==="privacy"||S.v==="help"||S.v==="auth"||S.v==="otp"||(S.v==="kyc"&&S.wiz>1)||(S.v==="home"&&S.tab==="send"&&S.step>0)}
+function goBack(){if(S.v==="privacy"||S.v==="help")S.v=S.prev||"welcome";else if(S.v==="otp")S.v="auth";else if(S.v==="auth")S.v="welcome";else if(S.v==="kyc")S.wiz--;else if(S.v==="home")S.step--;S.note="";render()}
 function hd(){$("#hd").innerHTML=(canBack()?`<button class="bk" data-a="hback" aria-label="Back">&#8592;</button>`:"")+`<div class="brand">${canBack()?"":LOGO(36)}<h1>Malawi Remit</h1></div><span class="badge">Early access</span>`}
 function render(){clearInterval(S.poll);const app=$("#app");app.innerHTML=V[S.v]();hd();
   const t=$("#tabs");t.hidden=S.v!=="home";if(!t.hidden)t.querySelectorAll("button").forEach(b=>b.className=b.dataset.t===S.tab?"":"alt");
@@ -156,27 +167,31 @@ const A={
   if(!r)return fail("No connection. Try again.");const j=await r.json().catch(()=>({}));if(!r.ok)return fail(j.error||"That code is not correct.");
   S.user={phone:S.a.phone,token:j.token,status:"none"};save();await sync();S.a.code="";route();render()},
  next:async()=>{const k=S.k,w=S.wiz;
-  if(w===1){if(k.fn.trim().split(/\s+/).length<2)return fail("Enter your first and last name.");if(!k.dob||(Date.now()-new Date(k.dob))/31557600000<18)return fail("You must be 18 or older.");if(!k.adr.trim())return fail("Enter your town or district.")}
+  if(w===1){if(k.fn.trim().split(/\s+/).length<2)return fail("Enter your first and last name.");if(!k.dob||(Date.now()-new Date(k.dob))/31557600000<18)return fail("You must be 18 or older.");if(!k.adr.trim())return fail("Enter your town or district.");if(!k.ag)return fail("Please accept the privacy notice to continue.")}
   if(w===2){if(k.idn.trim().length<6)return fail("ID number looks too short.");if(!k.idImg)return fail("Add a photo of your ID.")}
   if(w<3){S.wiz++;return render()}
   if(!k.selfie)return fail("Add a selfie.");busy(1);fail("Sending your details...");
-  const r=await api("/api/kyc",{method:"POST",body:{name:k.fn.trim(),dob:k.dob,idType:k.idt,idLast4:k.idn.trim().slice(-4),address:k.adr.trim(),idImg:k.idImg,selfie:k.selfie}}).catch(()=>null);busy(0);
+  const r=await api("/api/kyc",{method:"POST",body:{name:k.fn.trim(),dob:k.dob,idType:k.idt,idLast4:k.idn.trim().slice(-4),address:k.adr.trim(),idImg:k.idImg,selfie:k.selfie,consent:true}}).catch(()=>null);busy(0);
   if(!r)return fail("No connection. Try again.");if(r.status===401)return signOut("Your session expired. Please sign in again.");
   if(!r.ok){const j=await r.json().catch(()=>({}));return fail("Could not submit (HTTP "+r.status+(j.detail?", "+j.detail:"")+").")}
   S.user.status="pending";S.user.name=k.fn.trim();save();S.k.idImg=S.k.selfie="";route();render()},
  prev:()=>{S.wiz--;render()},out:()=>signOut(),check:async()=>{await sync();route();render()},rates:async()=>{await loadRates();render()},
- tab:b=>{S.tab=b.dataset.t;S.step=0;render()},
+ tab:b=>{S.tab=b.dataset.t;S.step=0;if(S.tab==="act"){S.tx=null;loadTx()}render()},
+ help:()=>{S.prev=S.v;S.v="help";render()},
+ priv:()=>{S.prev=S.v;S.v="privacy";render()},
+ del:async()=>{if(!confirm("Delete your account and all your data? This cannot be undone."))return;const r=await api("/api/kyc",{method:"DELETE"}).catch(()=>null);r&&r.ok?signOut("Your account and data were deleted."):alert("Could not delete your account. Try again.")},
  toR:()=>{const m=amtErr();if(m)return fail(m);S.step=1;render()},
  toV:()=>{const r=S.r;if(!r.name||!r.country||!r.bank)return fail("Fill in name, country and bank.");if(r.acct.replace(/\s/g,"").length<6)return fail("Account number or IBAN looks too short.");if(!/^[A-Za-z]{6}[A-Za-z0-9]{2}([A-Za-z0-9]{3})?$/.test(r.swift))return fail("SWIFT/BIC must be 8 or 11 characters.");S.step=2;render()},
  cur:b=>{S.q.cur=b.dataset.c;render()},hback:()=>goBack(),s0:()=>{S.step=0;render()},s1:()=>{S.step=1;render()}
 };
-document.addEventListener("click",e=>{const b=e.target.closest("[data-a]");if(b&&A[b.dataset.a]){if(navigator.vibrate)navigator.vibrate(8);A[b.dataset.a](b)}});
+document.addEventListener("click",e=>{const b=e.target.closest("[data-a]");if(b&&A[b.dataset.a]){if(b.tagName==="A")e.preventDefault();if(navigator.vibrate)navigator.vibrate(8);A[b.dataset.a](b)}});
 document.addEventListener("input",e=>{const t=e.target,p=t.dataset.s;if(!p)return;const[o,k]=p.split(".");S[o][k]=t.type==="checkbox"?t.checked:t.value;if(p==="q.amt"){S.q.amt=t.value.replace(/[^\d.]/g,"");upd()}});
 document.addEventListener("change",e=>{const t=e.target;
   if(t.dataset.s==="q.cur")render();
   if(t.dataset.f&&t.files[0])shrink(t.files[0]).then(d=>{if(!d)return fail("Could not read that photo. Use a JPG or PNG image.");S.k[t.dataset.f]=d;render()})});
 async function boot(){await Promise.all([loadRates(),sync()]);route();render()}
 boot();
+const net=()=>{$("#off").hidden=navigator.onLine};addEventListener("online",net);addEventListener("offline",net);net();
 history.pushState({a:1},"");
 addEventListener("popstate",()=>{if(canBack()){goBack();history.pushState({a:1},"")}});
 const refresh=()=>loadRates().then(()=>{const e=document.activeElement;if(S.v==="home"&&S.step===0&&!(e&&e.tagName==="INPUT"))render()});
