@@ -29,3 +29,10 @@ Licensed payments partner and Reserve Bank of Malawi authorisation, lawyer revie
 ## Bot protection (Cloudflare Turnstile) and ID result texts
 Turnstile: Cloudflare dashboard > Turnstile > Add widget for your site hostname, then set `TURNSTILE_SITEKEY` (variable) and `TURNSTILE_SECRET` (secret) in Pages and redeploy. `/api/health` shows `botCheck: true` when active. Without them the app works without the check. A passed check lets a connection resend codes for 10 minutes.
 When an admin approves or rejects an ID, the user gets an SMS (the admin page warns if it could not be sent).
+
+## Transfer records and receipts (needs a D1 database)
+1. Cloudflare dashboard > Storage & Databases > D1 > Create a database (e.g. `mwremit`).
+2. Pages project > Settings > Bindings > add D1 database, variable name `DB`. Tables are created automatically.
+3. Only when licensed and ready to take transfer requests, set `TRANSFERS_ENABLED` to `true`. Until then the app shows "Transfers open soon".
+4. Put your payment steps (till number, bank details) in `payInstructions` in `rates.json`.
+How it works: the server re-checks the rate, fee and limits, locks them in, and creates a transfer with a reference like `MW-7K3Q9XPD` in status "awaiting payment". Double taps never create duplicates. In `/admin` (owners) you mark it paid, sent, completed or failed, and the customer is texted. Customers can open a printable receipt and cancel before paying. This app does not take money itself; you confirm payments by hand until a payments partner is connected.

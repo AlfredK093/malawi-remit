@@ -115,14 +115,99 @@ async function approved(request, env) {
   if (!r || r.status !== "approved") return { err: J({ error: "Your ID has not been approved yet" }, 403) };
   return { phone };
 }
-// Only ID-approved users reach this. Transfers stay closed until TRANSFERS_ENABLED is "true" and a payment provider is wired in.
-async function transfers(request, env) {
+/* ---------- transfers (Cloudflare D1: bind a database as DB) ---------- */
+let schemaReady = false;
+async function ensureDb(env) {
+  if (schemaReady) return;
+  await env.DB.batch([
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS transfers (id TEXT PRIMARY KEY, ref TEXT UNIQUE, idem TEXT, phone TEXT, sender TEXT, created TEXT, updated TEXT, amount_minor INTEGER, fee_minor INTEGER, rate REAL, currency TEXT, receive_minor INTEGER, method TEXT, r_name TEXT, r_country TEXT, r_bank TEXT, r_acct TEXT, r_swift TEXT, status TEXT, note TEXT)"),
+    env.DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS t_idem ON transfers (phone, idem)"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS t_phone ON transfers (phone, created)"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS transfer_events (id INTEGER PRIMARY KEY AUTOINCREMENT, tid TEXT, t TEXT, actor TEXT, status TEXT, note TEXT)")
+  ]);
+  schemaReady = true;
+}
+const PAY_METHODS = ["Airtel Money", "TNM Mpamba", "Bank account"];
+const NEXT = { awaiting_payment: ["paid", "failed", "cancelled"], paid: ["sent", "failed"], sent: ["completed", "failed"] };
+const mk = n => Math.round(n * 100);
+const newRef = () => { const A = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"; let o = ""; for (const x of crypto.getRandomValues(new Uint8Array(8))) o += A[x % A.length]; return "MW-" + o; };
+const view = (r, events) => ({ id: r.id, ref: r.ref, created: r.created, updated: r.updated, status: r.status, amount: r.amount_minor / 100, fee: r.fee_minor / 100, rate: r.rate, currency: r.currency, receive: r.receive_minor / 100, method: r.method, note: r.note || "", recipient: { name: r.r_name, country: r.r_country, bank: r.r_bank, acct: "****" + String(r.r_acct).slice(-4), swift: r.r_swift }, events });
+const evIns = (env, tid, t, actor, status, note) => env.DB.prepare("INSERT INTO transfer_events (tid,t,actor,status,note) VALUES (?,?,?,?,?)").bind(tid, t, actor, status, note);
+
+// Only ID-approved users reach this. Creating transfers needs TRANSFERS_ENABLED=true and a D1 database.
+async function transfers(request, env, ctx) {
   const a = await approved(request, env); if (a.err) return a.err;
-  if (request.method === "POST") {
-    if (env.TRANSFERS_ENABLED !== "true") return J({ error: "Transfers are not open yet" }, 503);
-    return J({ error: "No payment provider is connected" }, 501);
+  const m = request.method, url = new URL(request.url);
+  if (!env.DB) return m === "GET" ? J([]) : J({ error: "Transfers are not open yet" }, 503);
+  await ensureDb(env);
+  if (m === "GET") {
+    const id = url.searchParams.get("id");
+    if (id) {
+      const r = await env.DB.prepare("SELECT * FROM transfers WHERE id=? AND phone=?").bind(id, a.phone).first(); if (!r) return J({ error: "Not found" }, 404);
+      const ev = await env.DB.prepare("SELECT t,status,note FROM transfer_events WHERE tid=? ORDER BY id").bind(id).all();
+      return J(view(r, ev.results));
+    }
+    const { results } = await env.DB.prepare("SELECT * FROM transfers WHERE phone=? ORDER BY created DESC LIMIT 50").bind(a.phone).all();
+    return J(results.map(r => view(r)));
   }
-  return J((await env.KV.get("tx:" + String(a.phone).replace(/\D/g, ""), "json")) || []);
+  if (m !== "POST") return J({ error: "Method not allowed" }, 405);
+  if (env.TRANSFERS_ENABLED !== "true") return J({ error: "Transfers are not open yet" }, 503);
+  const b = await request.json().catch(() => null); if (!b) return J({ error: "Bad request" }, 400);
+  const now = new Date().toISOString();
+  if (b.action === "cancel") {
+    const r = await env.DB.prepare("UPDATE transfers SET status='cancelled', updated=? WHERE id=? AND phone=? AND status='awaiting_payment'").bind(now, String(b.id), a.phone).run();
+    if (!r.meta.changes) return J({ error: "This transfer can no longer be cancelled." }, 400);
+    await evIns(env, b.id, now, "customer", "cancelled", "").run();
+    return J({ ok: true });
+  }
+  const rk = "trl:" + a.phone; if (await tooMany(env, rk, 5)) return J({ error: "Too many transfers. Try again later." }, 429);
+  const R = await (await rates(request, env, ctx)).json(); if (!R.perUnit) return J({ error: "Rates unavailable" }, 503);
+  const c = String(b.currency || ""), amt = Number(b.amount), rc = b.recipient || {}, rate = R.perUnit[c], t = s => String(s || "").trim();
+  const bad = !rate ? "currency" : !(amt >= R.minSendMWK && amt <= R.maxSendMWK) ? "amount outside the limits" : !PAY_METHODS.includes(b.method) ? "payment method" : (t(rc.name).length < 2 || t(rc.country).length < 2 || t(rc.bank).length < 2) ? "recipient details" : t(rc.acct).replace(/\s/g, "").length < 6 ? "account number" : !/^[A-Za-z]{6}[A-Za-z0-9]{2}([A-Za-z0-9]{3})?$/.test(t(rc.swift)) ? "SWIFT code" : !/^[A-Za-z0-9-]{8,64}$/.test(b.key || "") ? "request key" : "";
+  if (bad) return J({ error: "Invalid transfer", detail: bad }, 400);
+  if (Math.abs(rate - Number(b.rate)) > 0.005) return J({ error: "Rate changed", rate }, 409);
+  const dup = await env.DB.prepare("SELECT * FROM transfers WHERE phone=? AND idem=?").bind(a.phone, b.key).first(); if (dup) return J(view(dup));
+  const amountMinor = mk(amt), feeMinor = Math.max(mk(R.minFeeMWK), Math.round(amountMinor * R.feePct / 100)), recvMinor = Math.floor(((amountMinor - feeMinor) / 100) / rate * 100);
+  if (recvMinor <= 0) return J({ error: "Invalid transfer", detail: "amount too small after the fee" }, 400);
+  await bump(env, rk);
+  const kyc = await env.KV.get(kkey(a.phone), "json"), id = crypto.randomUUID();
+  for (let i = 0; i < 4; i++) {
+    const ref = newRef();
+    try {
+      await env.DB.batch([
+        env.DB.prepare("INSERT INTO transfers (id,ref,idem,phone,sender,created,updated,amount_minor,fee_minor,rate,currency,receive_minor,method,r_name,r_country,r_bank,r_acct,r_swift,status,note) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+          .bind(id, ref, b.key, a.phone, kyc ? kyc.name : "", now, now, amountMinor, feeMinor, rate, c, recvMinor, b.method, t(rc.name).slice(0, 100), t(rc.country).slice(0, 60), t(rc.bank).slice(0, 100), t(rc.acct).slice(0, 40), t(rc.swift).toUpperCase(), "awaiting_payment", ""),
+        evIns(env, id, now, "customer", "awaiting_payment", "")
+      ]);
+      break;
+    } catch (e) {
+      const d2 = await env.DB.prepare("SELECT * FROM transfers WHERE phone=? AND idem=?").bind(a.phone, b.key).first(); if (d2) return J(view(d2));
+      if (i === 3) throw e;
+    }
+  }
+  const row = await env.DB.prepare("SELECT * FROM transfers WHERE id=?").bind(id).first();
+  return J(view(row, [{ t: now, status: "awaiting_payment", note: "" }]), 201);
+}
+
+async function adminTransfers(request, env) {
+  const adm = await isAdmin(request, env); if (!adm) return J({ error: "Unauthorized" }, 401);
+  if (adm.role !== "owner") return J({ error: "Owner only" }, 403);
+  if (!env.DB) return J({ error: "D1 database not bound" }, 501);
+  await ensureDb(env);
+  if (request.method === "GET") {
+    const { results } = await env.DB.prepare("SELECT * FROM transfers ORDER BY created DESC LIMIT 100").all();
+    return J(results.map(r => ({ ...view(r), r_acct: r.r_acct, phone: r.phone, sender: r.sender })));
+  }
+  const b = await request.json().catch(() => null); if (!b) return J({ error: "Bad request" }, 400);
+  const r = await env.DB.prepare("SELECT * FROM transfers WHERE id=?").bind(String(b.id)).first(); if (!r) return J({ error: "Not found" }, 404);
+  if (!(NEXT[r.status] || []).includes(b.status)) return J({ error: "Cannot move from " + r.status + " to " + b.status }, 400);
+  const now = new Date().toISOString(), note = String(b.note || "").slice(0, 200);
+  await env.DB.batch([env.DB.prepare("UPDATE transfers SET status=?, updated=?, note=? WHERE id=?").bind(b.status, now, note, r.id), evIns(env, r.id, now, adm.email, b.status, note)]);
+  await audit(env, adm.email, "transfer " + b.status, r.ref);
+  const txt = { paid: "we have received your payment", sent: "has been sent to the recipient's bank", completed: "is complete", failed: "could not be completed" + (note ? " (" + note.slice(0, 60) + ")" : "") }[b.status];
+  let sms = true;
+  if (txt && hasSms(env)) { try { sms = (await sendSms(env, r.phone, "Malawi Remit: transfer " + r.ref + " " + txt + ".")).ok; } catch (e) { sms = false; } }
+  return J({ ok: true, sms });
 }
 
 /* ---------- admin ---------- */
@@ -255,14 +340,15 @@ export default {
     const p = new URL(request.url).pathname;
     if (!p.startsWith("/api/")) return env.ASSETS.fetch(request);
     try {
-      if (p === "/api/config") return J({ turnstile: env.TURNSTILE_SITEKEY && env.TURNSTILE_SECRET ? env.TURNSTILE_SITEKEY : "" }, 200, "public, max-age=300");
-      if (p === "/api/health") return J({ worker: true, kv: !!env.KV, sms: !!hasSms(env), admin: !!env.ADMIN_TOKEN, botCheck: !!(env.TURNSTILE_SITEKEY && env.TURNSTILE_SECRET) });
+      if (p === "/api/config") return J({ turnstile: env.TURNSTILE_SITEKEY && env.TURNSTILE_SECRET ? env.TURNSTILE_SITEKEY : "", transfers: env.TRANSFERS_ENABLED === "true" && !!env.DB }, 200, "public, max-age=300");
+      if (p === "/api/health") return J({ worker: true, kv: !!env.KV, sms: !!hasSms(env), admin: !!env.ADMIN_TOKEN, db: !!env.DB, botCheck: !!(env.TURNSTILE_SITEKEY && env.TURNSTILE_SECRET) });
       if (p === "/api/rates") return rates(request, env, ctx);
       if (!env.KV) return J({ error: "KV not bound" }, 501);
       if (p === "/api/logout") { await env.KV.delete("sess:" + (request.headers.get("authorization") || "").replace("Bearer ", "")); return J({ ok: true }); }
       if (p === "/api/otp") return otp(request, env);
       if (p === "/api/kyc") return kyc(request, env);
-      if (p === "/api/transfers") return transfers(request, env);
+      if (p === "/api/transfers") return transfers(request, env, ctx);
+      if (p === "/api/admin/transfers") return adminTransfers(request, env);
       if (p === "/api/admin/rates") return adminRates(request, env);
       if (["login", "logout", "me", "setup", "password", "users", "2fa", "audit"].includes(p.slice(11)) && p.startsWith("/api/admin/")) return adminAuth(request, env, p.slice(11));
       if (p === "/api/admin/fees") return adminFees(request, env);
