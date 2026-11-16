@@ -1,1 +1,1 @@
-{ "feePct": 1, "minFeeMWK": 2000, "minSendMWK": 20000, "maxSendMWK": 5000000, "supportEmail": "", "payInstructions": "" }
+{ "feePct": 1, "minFeeMWK": 2000, "minSendMWK": 20000, "maxSendMWK": 5000000, "dailyLimitMWK": 5000000, "monthlyLimitMWK": 20000000, "supportEmail": "", "payInstructions": "" }

@@ -127,6 +127,15 @@ async function ensureDb(env) {
   ]);
   schemaReady = true;
 }
+// Limits are counted per person in Malawi time (UTC+2, no daylight saving); cancelled and failed transfers do not count.
+const CAT = 2 * 3600e3;
+function windows(now = Date.now()) { const d = new Date(now + CAT); return { day: new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - CAT).toISOString(), month: new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) - CAT).toISOString() }; }
+async function usage(env, phone, R) {
+  const w = windows(), ov = (await env.KV.get("limit:" + String(phone).replace(/\D/g, ""), "json")) || {};
+  const sum = async since => (await env.DB.prepare("SELECT COALESCE(SUM(amount_minor),0) AS s FROM transfers WHERE phone=? AND created>=? AND status NOT IN ('cancelled','failed')").bind(phone, since).first()).s / 100;
+  const dl = ov.daily || R.dailyLimitMWK || 5000000, ml = ov.monthly || R.monthlyLimitMWK || 20000000, du = await sum(w.day), mu = await sum(w.month);
+  return { daily: { limit: dl, used: du, remaining: Math.max(0, dl - du) }, monthly: { limit: ml, used: mu, remaining: Math.max(0, ml - mu) } };
+}
 const PAY_METHODS = ["Airtel Money", "TNM Mpamba", "Bank account"];
 const NEXT = { awaiting_payment: ["paid", "failed", "cancelled"], paid: ["sent", "failed"], sent: ["completed", "failed"] };
 const mk = n => Math.round(n * 100);
@@ -141,6 +150,7 @@ async function transfers(request, env, ctx) {
   if (!env.DB) return m === "GET" ? J([]) : J({ error: "Transfers are not open yet" }, 503);
   await ensureDb(env);
   if (m === "GET") {
+    if (url.searchParams.get("usage")) { const R = await (await rates(request, env, ctx)).json(); if (!R.perUnit) return J({ error: "Rates unavailable" }, 503); return J(await usage(env, a.phone, R)); }
     const id = url.searchParams.get("id");
     if (id) {
       const r = await env.DB.prepare("SELECT * FROM transfers WHERE id=? AND phone=?").bind(id, a.phone).first(); if (!r) return J({ error: "Not found" }, 404);
@@ -169,6 +179,9 @@ async function transfers(request, env, ctx) {
   const dup = await env.DB.prepare("SELECT * FROM transfers WHERE phone=? AND idem=?").bind(a.phone, b.key).first(); if (dup) return J(view(dup));
   const amountMinor = mk(amt), feeMinor = Math.max(mk(R.minFeeMWK), Math.round(amountMinor * R.feePct / 100)), recvMinor = Math.floor(((amountMinor - feeMinor) / 100) / rate * 100);
   if (recvMinor <= 0) return J({ error: "Invalid transfer", detail: "amount too small after the fee" }, 400);
+  const u = await usage(env, a.phone, R);
+  if (amt > u.daily.remaining) return J({ error: "Limit reached", detail: "you can send up to MWK " + u.daily.remaining.toLocaleString("en-GB") + " more today", limit: "daily", remaining: u.daily.remaining }, 422);
+  if (amt > u.monthly.remaining) return J({ error: "Limit reached", detail: "you can send up to MWK " + u.monthly.remaining.toLocaleString("en-GB") + " more this month", limit: "monthly", remaining: u.monthly.remaining }, 422);
   await bump(env, rk);
   const kyc = await env.KV.get(kkey(a.phone), "json"), id = crypto.randomUUID();
   for (let i = 0; i < 4; i++) {
@@ -187,6 +200,19 @@ async function transfers(request, env, ctx) {
   }
   const row = await env.DB.prepare("SELECT * FROM transfers WHERE id=?").bind(id).first();
   return J(view(row, [{ t: now, status: "awaiting_payment", note: "" }]), 201);
+}
+
+async function adminLimits(request, env) {
+  const adm = await isAdmin(request, env); if (!adm) return J({ error: "Unauthorized" }, 401);
+  if (adm.role !== "owner") return J({ error: "Owner only" }, 403);
+  const m = request.method;
+  if (m === "GET") { const d = norm(new URL(request.url).searchParams.get("phone") || "").slice(1); return J(d.length >= 9 ? (await env.KV.get("limit:" + d, "json")) || {} : {}); }
+  const b = await request.json().catch(() => null), d = norm((b && b.phone) || "").slice(1);
+  if (d.length < 9) return J({ error: "Enter a valid phone number." }, 400);
+  if (m === "DELETE") { await env.KV.delete("limit:" + d); await audit(env, adm.email, "custom limit removed", "+" + d); return J({ ok: true }); }
+  if (!num(b.daily) || !num(b.monthly) || b.monthly < b.daily) return J({ error: "Enter a daily and a monthly limit (monthly must not be lower)." }, 400);
+  await env.KV.put("limit:" + d, JSON.stringify({ daily: b.daily, monthly: b.monthly, by: adm.email }));
+  await audit(env, adm.email, "custom limit set", "+" + d + " " + b.daily + "/" + b.monthly); return J({ ok: true });
 }
 
 async function adminTransfers(request, env) {
@@ -244,9 +270,9 @@ async function adminFees(request, env) {
   if (adm.role !== "owner") return J({ error: "Owner only" }, 403);
   if (request.method === "GET") return J((await env.KV.get("fees", "json")) || {});
   const b = await request.json().catch(() => null);
-  const ok = b && typeof b.feePct === "number" && b.feePct >= 0 && b.feePct <= 10 && num(b.minFeeMWK) && num(b.minSendMWK) && num(b.maxSendMWK) && b.maxSendMWK > b.minSendMWK;
+  const ok = b && typeof b.feePct === "number" && b.feePct >= 0 && b.feePct <= 10 && num(b.minFeeMWK) && num(b.minSendMWK) && num(b.maxSendMWK) && b.maxSendMWK > b.minSendMWK && num(b.dailyLimitMWK) && num(b.monthlyLimitMWK) && b.dailyLimitMWK >= b.minSendMWK && b.monthlyLimitMWK >= b.dailyLimitMWK;
   if (!ok) return J({ error: "Invalid fees" }, 400);
-  const out = { feePct: b.feePct, minFeeMWK: b.minFeeMWK, minSendMWK: b.minSendMWK, maxSendMWK: b.maxSendMWK };
+  const out = { feePct: b.feePct, minFeeMWK: b.minFeeMWK, minSendMWK: b.minSendMWK, maxSendMWK: b.maxSendMWK, dailyLimitMWK: b.dailyLimitMWK, monthlyLimitMWK: b.monthlyLimitMWK };
   await env.KV.put("fees", JSON.stringify(out)); await audit(env, adm.email, "fees saved", out.feePct + "% min " + out.minFeeMWK); return J(out);
 }
 
@@ -348,6 +374,7 @@ export default {
       if (p === "/api/otp") return otp(request, env);
       if (p === "/api/kyc") return kyc(request, env);
       if (p === "/api/transfers") return transfers(request, env, ctx);
+      if (p === "/api/admin/limits") return adminLimits(request, env);
       if (p === "/api/admin/transfers") return adminTransfers(request, env);
       if (p === "/api/admin/rates") return adminRates(request, env);
       if (["login", "logout", "me", "setup", "password", "users", "2fa", "audit"].includes(p.slice(11)) && p.startsWith("/api/admin/")) return adminAuth(request, env, p.slice(11));

@@ -99,6 +99,7 @@ const fail=m=>{const e=$("#err");if(e)e.textContent=m};
 const busy=on=>{const b=$("#go");if(b)b.disabled=on};
 const shrink=f=>new Promise(r=>{const i=new Image();i.onload=()=>{const k=Math.min(1,800/Math.max(i.width,i.height)),c=document.createElement("canvas");c.width=i.width*k;c.height=i.height*k;c.getContext("2d").drawImage(i,0,0,c.width,c.height);r(c.toDataURL("image/jpeg",.6))};i.onerror=()=>r(null);i.src=URL.createObjectURL(f)});
 
+function loadUsage(){if(!S.cfg.transfers||!S.user||S.user.status!=="approved")return;api("/api/transfers?usage=1").then(r=>r.ok?r.json():null).then(j=>{if(j){S.usage=j;upd()}}).catch(()=>{})}
 function loadTx(){api("/api/transfers").then(r=>r.json()).then(j=>{S.tx=Array.isArray(j)?j:[]}).catch(()=>{S.tx=[]}).finally(()=>{if(S.v==="home"&&S.tab==="act")render()})}
 const loadCfg=()=>fetch("/api/config").then(r=>r.json()).then(j=>{S.cfg=j}).catch(()=>{});
 function mountTs(){const el=$("#ts");if(!el||!S.cfg.turnstile)return;
@@ -113,7 +114,7 @@ function route(){if(!S.user){if(!["auth","otp"].includes(S.v))S.v="welcome";retu
 function signOut(n){if(S.user)api("/api/logout",{method:"POST"}).catch(()=>{});S.user=null;save();S.note=n||"";S.v="welcome";render()}
 
 const quote=()=>{const R=S.rates,a=parseFloat(S.q.amt)||0,rate=R.perUnit[S.q.cur],fee=a?Math.max(R.minFeeMWK,a*R.feePct/100):0;return{a,rate,fee,recv:a>fee?(a-fee)/rate:0}};
-const amtErr=()=>{const q=quote(),R=S.rates;return!q.a?"Enter an amount in MWK.":q.a<R.minSendMWK?`Minimum transfer is MWK ${fmt(R.minSendMWK,0)}.`:q.a>R.maxSendMWK?`Maximum transfer is MWK ${fmt(R.maxSendMWK,0)}.`:""};
+const amtErr=()=>{const q=quote(),R=S.rates;return!q.a?"Enter an amount in MWK.":q.a<R.minSendMWK?`Minimum transfer is MWK ${fmt(R.minSendMWK,0)}.`:q.a>R.maxSendMWK?`Maximum transfer is MWK ${fmt(R.maxSendMWK,0)}.`:S.usage&&q.a>S.usage.daily.remaining?`Daily limit: you can send up to MWK ${fmt(S.usage.daily.remaining,0)} more today.`:S.usage&&q.a>S.usage.monthly.remaining?`Monthly limit: you can send up to MWK ${fmt(S.usage.monthly.remaining,0)} more this month.`:""};
 const prog=(i,n=3)=>`<div class="prog">${Array.from({length:n},(_,x)=>`<i class="${x<i?"on":""}"></i>`).join("")}</div>`;
 const field=(l,id,s,extra="")=>`<label for="${id}">${l}</label><input id="${id}" data-s="${s}" ${extra} value="${esc(s.split(".").reduce((o,k)=>o[k],S))}">`;
 const upload=(l,key,cap)=>`<label>${l}</label><input type="file" accept="image/*" capture="${cap}" data-f="${key}">${S.k[key]?`<img class="pv" src="${S.k[key]}" alt="">`:""}`;
@@ -149,11 +150,11 @@ const V={
  acct:()=>`<div class="card center"><div class="dot">${esc((S.user.name||"?")[0])}</div><h2>${esc(S.user.name||"Your account")}</h2><div class="line"><span>Phone</span><span>${esc(S.user.phone)}</span></div><div class="line"><span>ID check</span><span>Verified</span></div><button class="alt" data-a="help">Help and contact</button><button class="alt" data-a="priv">Privacy notice</button><button class="alt" data-a="out">Sign out</button><button class="alt" data-a="del" style="color:var(--red)">Delete my account and data</button></div>`,
  amount:()=>{const R=S.rates;if(!R)return`<div class="card"><h2>Rates unavailable</h2><div class="hint">We could not load today's rates.</div><button data-a="rates">Try again</button></div>`;
   return`<div class="big2" style="font-size:24px;margin:0 0 12px">Hello, ${esc((S.user.name||"there").split(" ")[0])}</div><div class="chips">${Object.keys(R.perUnit).map(c=>`<button class="${c===S.q.cur?"":"alt"}" data-a="cur" data-c="${c}">${c}</button>`).join("")}</div>${prog(1)}<div class="card"><label style="margin-top:0">You send</label><div class="big"><span class="chip">MWK</span><input id="amt" data-s="q.amt" inputmode="decimal" placeholder="0" value="${esc(S.q.amt)}"></div><label>They receive</label><div class="big"><span class="recv" id="recv"></span><select id="cur" data-s="q.cur">${Object.keys(R.perUnit).map(c=>`<option ${c===S.q.cur?"selected":""}>${c}</option>`).join("")}</select></div><div class="ratepill">1 ${S.q.cur} = MWK ${fmt(R.perUnit[S.q.cur])}</div><div class="src">${esc(R.source)}. Rate date: ${esc(R.updated)}.${R.stale?" Latest rate we could get.":""}</div></div>
-  <div class="card"><div class="line"><span>Transfer fee</span><span id="fee"></span></div><div class="hint" id="feenote" style="margin-top:0"></div><label>Pay with</label><select data-s="q.method">${METHODS.map(m=>`<option ${m===S.q.method?"selected":""}>${m}</option>`).join("")}</select><div class="err" id="err"></div><button data-a="toR">Add recipient</button></div>`},
+  <div class="card"><div class="line"><span>Transfer fee</span><span id="fee"></span></div><div class="hint" id="feenote" style="margin-top:0"></div><div class="hint" id="lim" style="margin-top:0"></div><label>Pay with</label><select data-s="q.method">${METHODS.map(m=>`<option ${m===S.q.method?"selected":""}>${m}</option>`).join("")}</select><div class="err" id="err"></div><button data-a="toR">Add recipient</button></div>`},
  recip:()=>`${prog(2)}<div class="card"><h2>Who are you sending to?</h2>${field("Full name (as on bank account)","rn","r.name")}${field("Country","rc","r.country")}${field("Bank name","rb","r.bank")}${field("Account number or IBAN","ra","r.acct",'autocomplete="off"')}${field("SWIFT/BIC code","rs2","r.swift",'autocapitalize="characters"')}<div class="err" id="err"></div><button data-a="toV">Review</button><button class="alt" data-a="s0">Back</button></div>`,
  review:()=>{const q=quote(),r=S.r;return`${prog(3)}<div class="card"><h2>Review</h2><div class="line"><span>You send</span><span>MWK ${fmt(q.a,0)}</span></div><div class="line"><span>Bank rate</span><span>1 ${S.q.cur} = MWK ${fmt(q.rate)}</span></div><div class="line"><span>Fee (${S.rates.feePct}%, min MWK ${fmt(S.rates.minFeeMWK,0)})</span><span>MWK ${fmt(q.fee,0)}</span></div><div class="line"><span>They receive</span><span><b>${fmt(q.recv)} ${S.q.cur}</b></span></div><div class="line"><span>Recipient</span><span>${esc(r.name)}<br>${esc(r.bank)}, ${esc(r.country)}</span></div>${S.cfg.transfers?`<button id="go" data-a="confirmT">Confirm transfer</button><div class="err" id="err"></div><div class="hint">We will create your transfer and show you how to pay. Nothing is taken from you by this app.</div>`:`<button disabled>Transfers open soon</button><div class="hint">Sending money is not switched on yet, so nothing is charged or sent.</div>`}<button class="alt" data-a="s1">Back</button></div>`}
 };
-function upd(){if(!$("#fee")||!S.rates)return;const q=quote();$("#fee").textContent=q.a?`MWK ${fmt(q.fee,0)}`:"-";$("#recv").textContent=fmt(q.recv);const R=S.rates;$("#feenote").textContent=`Fee is ${R.feePct}% of the amount, with a minimum of MWK ${fmt(R.minFeeMWK,0)}.${q.a&&q.a*R.feePct/100<R.minFeeMWK?" The minimum fee applies to this amount.":""} You can send MWK ${fmt(R.minSendMWK,0)} to MWK ${fmt(R.maxSendMWK,0)}.`}
+function upd(){if(!$("#fee")||!S.rates)return;const q=quote();$("#fee").textContent=q.a?`MWK ${fmt(q.fee,0)}`:"-";$("#recv").textContent=fmt(q.recv);const R=S.rates;$("#feenote").textContent=`Fee is ${R.feePct}% of the amount, with a minimum of MWK ${fmt(R.minFeeMWK,0)}.${q.a&&q.a*R.feePct/100<R.minFeeMWK?" The minimum fee applies to this amount.":""} You can send MWK ${fmt(R.minSendMWK,0)} to MWK ${fmt(R.maxSendMWK,0)}.`;const u=S.usage;$("#lim").textContent=u?`You can still send MWK ${fmt(u.daily.remaining,0)} today and MWK ${fmt(u.monthly.remaining,0)} this month. Limits reset at midnight Malawi time.`:""}
 function canBack(){return S.v==="receipt"||S.v==="privacy"||S.v==="help"||S.v==="auth"||S.v==="otp"||(S.v==="kyc"&&S.wiz>1)||(S.v==="home"&&S.tab==="send"&&S.step>0)}
 function goBack(){if(S.v==="privacy"||S.v==="help")S.v=S.prev||"welcome";else if(S.v==="receipt"){S.v="home";S.tab="act";S.tx=null;loadTx()}else if(S.v==="otp")S.v="auth";else if(S.v==="auth")S.v="welcome";else if(S.v==="kyc")S.wiz--;else if(S.v==="home")S.step--;S.note="";render()}
 function hd(){$("#hd").innerHTML=(canBack()?`<button class="bk" data-a="hback" aria-label="Back">&#8592;</button>`:"")+`<div class="brand">${LOGO(34)}<h1>Malawi Remit</h1></div><span class="badge">Early access</span>`}
@@ -189,7 +190,7 @@ const A={
   if(!r.ok){const j=await r.json().catch(()=>({}));return fail("Could not submit (HTTP "+r.status+(j.detail?", "+j.detail:"")+").")}
   S.user.status="pending";S.user.name=k.fn.trim();save();S.k.idImg=S.k.selfie="";route();render()},
  prev:()=>{S.wiz--;render()},out:()=>signOut(),check:async()=>{await sync();route();render()},rates:async()=>{await loadRates();render()},
- tab:b=>{S.tab=b.dataset.t;S.step=0;if(S.tab==="act"){S.tx=null;loadTx()}render()},
+ tab:b=>{S.tab=b.dataset.t;S.step=0;if(S.tab==="act"){S.tx=null;loadTx()}if(S.tab==="send")loadUsage();render()},
  help:()=>{S.prev=S.v;S.v="help";render()},
  priv:()=>{S.prev=S.v;S.v="privacy";render()},
  del:async()=>{if(!confirm("Delete your account and all your data? This cannot be undone."))return;const r=await api("/api/kyc",{method:"DELETE"}).catch(()=>null);r&&r.ok?signOut("Your account and data were deleted."):alert("Could not delete your account. Try again.")},
@@ -198,13 +199,13 @@ const A={
  open:async b=>{const r=await api("/api/transfers?id="+encodeURIComponent(b.dataset.id)).catch(()=>null);if(!r||!r.ok)return alert("Could not open this receipt.");S.rec=await r.json();S.v="receipt";render()},
  print:()=>window.print(),
  share:()=>{const x=S.rec,t=`Malawi Remit transfer ${x.ref}: MWK ${fmt(x.amount)} to ${x.recipient.name}. Status: ${ST[x.status]||x.status}.`;navigator.share?navigator.share({title:"Transfer receipt",text:t}).catch(()=>{}):navigator.clipboard.writeText(t).then(()=>alert("Copied"))},
- cancelT:async()=>{if(!confirm("Cancel this transfer?"))return;const r=await api("/api/transfers",{method:"POST",body:{action:"cancel",id:S.rec.id}}).catch(()=>null);if(!r||!r.ok)return alert("This transfer can no longer be cancelled.");A.open({dataset:{id:S.rec.id}})},
+ cancelT:async()=>{if(!confirm("Cancel this transfer?"))return;const r=await api("/api/transfers",{method:"POST",body:{action:"cancel",id:S.rec.id}}).catch(()=>null);if(!r||!r.ok)return alert("This transfer can no longer be cancelled.");A.open({dataset:{id:S.rec.id}});loadUsage()},
  confirmT:async()=>{S.idem=S.idem||crypto.randomUUID();busy(1);const q=quote();
   const r=await api("/api/transfers",{method:"POST",body:{amount:q.a,currency:S.q.cur,method:S.q.method,rate:q.rate,key:S.idem,recipient:S.r}}).catch(()=>null);busy(0);
   if(!r)return fail("No connection. Check your transfer list before trying again.");const j=await r.json().catch(()=>({}));
   if(r.status===409){await loadRates();S.step=0;S.idem=null;render();return alert("The bank rate changed to "+fmt(j.rate)+". Please review your transfer again.")}
   if(!r.ok)return fail((j.error||"Could not create the transfer")+(j.detail?" ("+j.detail+")":"")+".");
-  S.rec=j;S.idem=null;S.q.amt="";S.r={name:"",country:"",bank:"",acct:"",swift:""};S.step=0;S.v="receipt";render()},
+  S.rec=j;S.idem=null;S.q.amt="";S.r={name:"",country:"",bank:"",acct:"",swift:""};S.step=0;S.v="receipt";loadUsage();render()},
  cur:b=>{S.q.cur=b.dataset.c;render()},hback:()=>goBack(),s0:()=>{S.step=0;render()},s1:()=>{S.step=1;render()}
 };
 document.addEventListener("click",e=>{const b=e.target.closest("[data-a]");if(b&&A[b.dataset.a]){if(b.tagName==="A")e.preventDefault();if(navigator.vibrate)navigator.vibrate(8);A[b.dataset.a](b)}});
@@ -212,7 +213,7 @@ document.addEventListener("input",e=>{const t=e.target,p=t.dataset.s;if(!p)retur
 document.addEventListener("change",e=>{const t=e.target;
   if(t.dataset.s==="q.cur")render();
   if(t.dataset.f&&t.files[0])shrink(t.files[0]).then(d=>{if(!d)return fail("Could not read that photo. Use a JPG or PNG image.");S.k[t.dataset.f]=d;render()})});
-async function boot(){await Promise.all([loadRates(),sync(),loadCfg()]);route();render()}
+async function boot(){await Promise.all([loadRates(),sync(),loadCfg()]);route();render();loadUsage()}
 boot();
 const net=()=>{$("#off").hidden=navigator.onLine};addEventListener("online",net);addEventListener("offline",net);net();
 history.pushState({a:1},"");

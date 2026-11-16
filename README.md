@@ -36,3 +36,6 @@ When an admin approves or rejects an ID, the user gets an SMS (the admin page wa
 3. Only when licensed and ready to take transfer requests, set `TRANSFERS_ENABLED` to `true`. Until then the app shows "Transfers open soon".
 4. Put your payment steps (till number, bank details) in `payInstructions` in `rates.json`.
 How it works: the server re-checks the rate, fee and limits, locks them in, and creates a transfer with a reference like `MW-7K3Q9XPD` in status "awaiting payment". Double taps never create duplicates. In `/admin` (owners) you mark it paid, sent, completed or failed, and the customer is texted. Customers can open a printable receipt and cancel before paying. This app does not take money itself; you confirm payments by hand until a payments partner is connected.
+
+## Per-person limits
+Daily and monthly limits (MWK) per person are set in `/admin` > Fees and limits (defaults in `rates.json`). They are enforced on the server when a transfer is created, counted in Malawi time (reset at midnight), and cancelled or failed transfers do not count. The send screen shows how much a person has left. Owners can set a custom limit for one person under Custom limits. Set limits to match Reserve Bank of Malawi requirements.
