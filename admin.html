@@ -96,7 +96,7 @@ async function queue(){const r=await api("/api/admin/kyc");if(r.status===401)ret
    (d.length?`<h2>Decided</h2>`+d.map(x=>`<div class="s">${esc(x.name)}, ${esc(x.phone)}: ${esc(x.status)}${x.reason?" ("+esc(x.reason)+")":""}${x.decidedBy?" by "+esc(x.decidedBy):""}</div>`).join(""):"")}
 $("#q").onclick=async e=>{const b=e.target.closest("button[data-d]");if(!b)return;
   const reason=b.dataset.d==="rejected"?prompt("Reason shown to the user (e.g. photo unclear):")||"":"";
-  const r=await api("/api/admin/kyc",{phone:b.dataset.p,decision:b.dataset.d,reason});r.ok?queue():alert(await why(r))};
+  const r=await api("/api/admin/kyc",{phone:b.dataset.p,decision:b.dataset.d,reason});if(!r.ok)return alert(await why(r));const j=await r.json().catch(()=>({}));if(j.sms===false)alert("Decision saved, but the text message could not be sent.");queue()};
 $("#rf").onclick=queue;setInterval(()=>{if(!$("#panel").hidden)queue()},15000);
 async function live(){try{const j=await(await fetch("/api/rates",{cache:"no-store"})).json();$("#live").textContent=j.perUnit?`Live now: 1 USD = MWK ${j.perUnit.USD} (${j.source}, dated ${j.updated}${j.override?", MANUAL OVERRIDE":""}${j.stale?", STALE":""})`:"No rate source is reachable right now."}catch{$("#live").textContent="Could not load live rates."}}
 async function ratesLoad(){const r=await api("/api/admin/rates");if(!r.ok)return;const j=await r.json();if(j.perUnit){for(const c of["USD","GBP","EUR","ZAR"])$("#"+c).value=j.perUnit[c];$("#src").value=j.source}}

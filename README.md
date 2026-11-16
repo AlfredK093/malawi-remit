@@ -25,3 +25,7 @@ Licensed payments partner and Reserve Bank of Malawi authorisation, lawyer revie
 
 ## Security
 `_headers` sets browser protections (no framing, strict content policy, no referrer, HTTPS only). IDs are checked as real JPEG photos, adults only, with a limit of 5 submissions per 15 minutes. Code requests are limited per phone and per connection. Admins use hashed passwords, optional authenticator-app codes, lockouts, 12-hour sessions and an activity log (kept 90 days). User sign-out ends the session on the server too.
+
+## Bot protection (Cloudflare Turnstile) and ID result texts
+Turnstile: Cloudflare dashboard > Turnstile > Add widget for your site hostname, then set `TURNSTILE_SITEKEY` (variable) and `TURNSTILE_SECRET` (secret) in Pages and redeploy. `/api/health` shows `botCheck: true` when active. Without them the app works without the check. A passed check lets a connection resend codes for 10 minutes.
+When an admin approves or rejects an ID, the user gets an SMS (the admin page warns if it could not be sent).

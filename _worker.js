@@ -60,7 +60,13 @@ async function otp(request, env) {
   const b = await request.json().catch(() => null); if (!b) return J({ error: "Bad request" }, 400);
   const phone = norm(b.phone || ""); if (!/^\+\d{10,14}$/.test(phone)) return J({ error: "Invalid phone number" }, 400);
   if (b.action === "send") {
-    const ipk = "otpip:" + (request.headers.get("cf-connecting-ip") || "x");
+    const ip = request.headers.get("cf-connecting-ip") || "x", ipk = "otpip:" + ip;
+    if (env.TURNSTILE_SITEKEY && env.TURNSTILE_SECRET && !(await env.KV.get("human:" + ip))) {
+      if (!b.turnstile) return J({ error: "Security check missing", detail: "complete the security check" }, 400);
+      const v = await (await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", { method: "POST", body: new URLSearchParams({ secret: env.TURNSTILE_SECRET, response: b.turnstile, remoteip: ip }) })).json().catch(() => ({}));
+      if (!v.success) return J({ error: "Security check failed", detail: "security check failed, try again" }, 400);
+      await env.KV.put("human:" + ip, "1", { expirationTtl: 600 });
+    }
     if (await env.KV.get("otprl:" + phone) || await tooMany(env, ipk, 10)) return J({ error: "Wait a minute before asking again." }, 429);
     await bump(env, ipk);
     const code = String(100000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 900000));
@@ -142,7 +148,10 @@ async function adminKyc(request, env) {
   const k = kkey(b.phone), rec = await env.KV.get(k, "json"); if (!rec) return J({ error: "Not found" }, 404);
   delete rec.idImg; delete rec.selfie;
   Object.assign(rec, { decidedBy: adm.email, status: b.decision, reason: String(b.reason || "").slice(0, 200), decided: new Date().toISOString() });
-  await env.KV.put(k, JSON.stringify(rec)); await audit(env, adm.email, "ID " + b.decision, rec.phone + " " + rec.name); return J({ ok: true });
+  await env.KV.put(k, JSON.stringify(rec)); await audit(env, adm.email, "ID " + b.decision, rec.phone + " " + rec.name);
+  let sms = false;
+  if (hasSms(env)) { try { sms = (await sendSms(env, rec.phone, b.decision === "approved" ? "Malawi Remit: your ID is approved. Open the app to continue." : "Malawi Remit: we could not approve your ID" + (rec.reason ? " (" + rec.reason.slice(0, 80) + ")" : "") + ". Open the app to try again.")).ok; } catch (e) {} }
+  return J({ ok: true, sms });
 }
 
 async function adminFees(request, env) {
@@ -246,7 +255,8 @@ export default {
     const p = new URL(request.url).pathname;
     if (!p.startsWith("/api/")) return env.ASSETS.fetch(request);
     try {
-      if (p === "/api/health") return J({ worker: true, kv: !!env.KV, sms: !!hasSms(env), admin: !!env.ADMIN_TOKEN });
+      if (p === "/api/config") return J({ turnstile: env.TURNSTILE_SITEKEY && env.TURNSTILE_SECRET ? env.TURNSTILE_SITEKEY : "" }, 200, "public, max-age=300");
+      if (p === "/api/health") return J({ worker: true, kv: !!env.KV, sms: !!hasSms(env), admin: !!env.ADMIN_TOKEN, botCheck: !!(env.TURNSTILE_SITEKEY && env.TURNSTILE_SECRET) });
       if (p === "/api/rates") return rates(request, env, ctx);
       if (!env.KV) return J({ error: "KV not bound" }, 501);
       if (p === "/api/logout") { await env.KV.delete("sess:" + (request.headers.get("authorization") || "").replace("Bearer ", "")); return J({ ok: true }); }
