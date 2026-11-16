@@ -60,7 +60,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
 
 header{display:flex;align-items:center;gap:10px;margin-bottom:20px;min-height:44px}
 .brand{display:flex;align-items:center;gap:10px;flex:1}.brand h1{font-size:19px}
-.bk{width:44px;height:44px;padding:0;margin:0;border-radius:50%;font-size:20px;background:var(--glass);box-shadow:none;flex:none}
+.bk{width:44px;height:44px;min-height:44px;padding:0;margin:0;border-radius:50%;font-size:20px;background:var(--glass);box-shadow:none;flex:none}
 .badge{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;padding:6px 10px;border-radius:999px;background:var(--glass2);border:1px solid var(--edge);color:var(--mute)}
 .card{animation:rise .5s cubic-bezier(.2,.8,.2,1) both}.card:nth-child(2){animation-delay:.06s}.card:nth-child(3){animation-delay:.12s}
 @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
@@ -84,7 +84,7 @@ a{color:var(--green)}.priv h3{font-size:15px;margin:16px 0 4px}.priv h3:first-ch
 <div id="tabs" class="tabs" hidden><button data-a="tab" data-t="send">Send</button><button class="alt" data-a="tab" data-t="act">Activity</button><button class="alt" data-a="tab" data-t="acct">Account</button></div>
 <script>
 const $=s=>document.querySelector(s),esc=t=>String(t??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])),fmt=(n,d=2)=>Number(n).toLocaleString("en-GB",{minimumFractionDigits:d,maximumFractionDigits:d});
-const LOGO=n=>`<svg width="${n}" height="${n}" viewBox="0 0 64 64" aria-label="Malawi Remit"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#16c47f"/><stop offset="1" stop-color="#0a5f6e"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(#lg)"/><circle cx="26" cy="40" r="11" fill="#ff4d5e"/><path d="M18 48C32 48 42 40 45 24" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/><path d="M37 22L46 18L48 28" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const LOGO=n=>`<svg width="${n}" height="${n}" viewBox="0 0 64 64" aria-label="Malawi Remit"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#18c985"/><stop offset="1" stop-color="#095c6b"/></linearGradient><linearGradient id="hl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".28"/><stop offset=".55" stop-color="#fff" stop-opacity="0"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(#lg)"/><rect width="64" height="64" rx="16" fill="url(#hl)"/><circle cx="22" cy="12" r="5" fill="#ff4d5e"/><path d="M13 49V23L29 41L48 19" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M37 19H48V30" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const METHODS=["Airtel Money","TNM Mpamba","Bank account"];
 const S={v:"boot",rates:null,user:null,tab:"send",step:0,wiz:1,mode:"in",note:"",
  q:{amt:"",cur:"USD",method:METHODS[0]},r:{name:"",country:"",bank:"",acct:"",swift:""},
@@ -104,7 +104,7 @@ async function sync(){if(!S.user)return;
     const j=await r.json();S.user.status=j.status;S.user.name=j.name||S.user.name;S.user.reason=j.reason||"";save()}catch{}}
 function route(){if(!S.user){if(!["auth","otp"].includes(S.v))S.v="welcome";return}
   const s=S.user.status;S.v=s==="approved"?"home":s==="pending"?"pending":"kyc";if(S.v==="kyc"){S.wiz=1;S.k.ag=S.k.ag||S.a.ag}}
-function signOut(n){S.user=null;save();S.note=n||"";S.v="welcome";render()}
+function signOut(n){if(S.user)api("/api/logout",{method:"POST"}).catch(()=>{});S.user=null;save();S.note=n||"";S.v="welcome";render()}
 
 const quote=()=>{const R=S.rates,a=parseFloat(S.q.amt)||0,rate=R.perUnit[S.q.cur],fee=a?Math.max(R.minFeeMWK,a*R.feePct/100):0;return{a,rate,fee,recv:a>fee?(a-fee)/rate:0}};
 const amtErr=()=>{const q=quote(),R=S.rates;return!q.a?"Enter an amount in MWK.":q.a<R.minSendMWK?`Minimum transfer is MWK ${fmt(R.minSendMWK,0)}.`:q.a>R.maxSendMWK?`Maximum transfer is MWK ${fmt(R.maxSendMWK,0)}.`:""};
@@ -144,7 +144,7 @@ const V={
 function upd(){if(!$("#fee")||!S.rates)return;const q=quote();$("#fee").textContent=q.a?`MWK ${fmt(q.fee,0)}`:"-";$("#recv").textContent=fmt(q.recv);const R=S.rates;$("#feenote").textContent=`Fee is ${R.feePct}% of the amount, with a minimum of MWK ${fmt(R.minFeeMWK,0)}.${q.a&&q.a*R.feePct/100<R.minFeeMWK?" The minimum fee applies to this amount.":""} You can send MWK ${fmt(R.minSendMWK,0)} to MWK ${fmt(R.maxSendMWK,0)}.`}
 function canBack(){return S.v==="privacy"||S.v==="help"||S.v==="auth"||S.v==="otp"||(S.v==="kyc"&&S.wiz>1)||(S.v==="home"&&S.tab==="send"&&S.step>0)}
 function goBack(){if(S.v==="privacy"||S.v==="help")S.v=S.prev||"welcome";else if(S.v==="otp")S.v="auth";else if(S.v==="auth")S.v="welcome";else if(S.v==="kyc")S.wiz--;else if(S.v==="home")S.step--;S.note="";render()}
-function hd(){$("#hd").innerHTML=(canBack()?`<button class="bk" data-a="hback" aria-label="Back">&#8592;</button>`:"")+`<div class="brand">${canBack()?"":LOGO(36)}<h1>Malawi Remit</h1></div><span class="badge">Early access</span>`}
+function hd(){$("#hd").innerHTML=(canBack()?`<button class="bk" data-a="hback" aria-label="Back">&#8592;</button>`:"")+`<div class="brand">${LOGO(34)}<h1>Malawi Remit</h1></div><span class="badge">Early access</span>`}
 function render(){clearInterval(S.poll);const app=$("#app");app.innerHTML=V[S.v]();hd();
   const t=$("#tabs");t.hidden=S.v!=="home";if(!t.hidden)t.querySelectorAll("button").forEach(b=>b.className=b.dataset.t===S.tab?"":"alt");
   upd();window.scrollTo(0,0);

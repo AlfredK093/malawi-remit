@@ -52,9 +52,10 @@ main{max-width:760px}.g{display:grid;grid-template-columns:repeat(auto-fit,minma
 .k{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}.k div{flex:1 1 200px}.s{font-size:14px;color:var(--mute)}.msg{font-size:14px;min-height:20px;margin-top:8px;color:var(--mute)}
 img{max-width:100%;max-height:260px;border-radius:12px;border:1px solid var(--edge)}button{width:auto;margin:12px 8px 0 0;padding:11px 18px}button.no{background:linear-gradient(135deg,#d13b52,#9c1d33)}[hidden]{display:none!important}details{margin-top:14px}summary{cursor:pointer;color:var(--mute);font-size:14px}</style></head><body>
 <div class="orbs"><i></i><i></i><i></i></div><main>
-<header><div class="logo"></div><h1>Malawi Remit admin</h1><span id="who" class="s" style="margin-left:auto"></span><button id="lo" class="alt" hidden style="width:auto;margin:0;padding:9px 14px">Sign out</button></header>
+<header><svg width="36" height="36" viewBox="0 0 64 64" aria-label="Malawi Remit"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#18c985"/><stop offset="1" stop-color="#095c6b"/></linearGradient><linearGradient id="hl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".28"/><stop offset=".55" stop-color="#fff" stop-opacity="0"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(#lg)"/><rect width="64" height="64" rx="16" fill="url(#hl)"/><circle cx="22" cy="12" r="5" fill="#ff4d5e"/><path d="M13 49V23L29 41L48 19" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M37 19H48V30" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg><h1>Malawi Remit admin</h1><span id="who" class="s" style="margin-left:auto"></span><button id="lo" class="alt" hidden style="width:auto;margin:0;padding:9px 14px">Sign out</button></header>
 <div id="login" hidden><div class="card"><h2>Admin sign in</h2>
  <label for="em">Email</label><input id="em" type="email" autocomplete="username"><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password">
+ <div id="ocw" hidden><label for="oc">6-digit code from your authenticator app</label><input id="oc" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></div>
  <button id="in">Sign in</button><div class="msg" id="m0"></div>
  <details><summary>First-time setup or forgotten password</summary><div class="s" style="margin-top:8px">Use the ADMIN_TOKEN secret from Cloudflare as the setup key. Entering an existing email resets that admin's password.</div>
  <label for="sk">Setup key</label><input id="sk" type="password" autocomplete="off"><label for="se">Email</label><input id="se" type="email"><label for="sp">New password (10+ characters)</label><input id="sp" type="password" autocomplete="new-password">
@@ -68,6 +69,8 @@ img{max-width:100%;max-height:260px;border-radius:12px;border:1px solid var(--ed
  <div class="card own"><h2>Team</h2><div id="team" class="s">Loading</div>
   <div class="g"><div><label>Email</label><input id="te" type="email"></div><div><label>Password (10+)</label><input id="tp" type="password" autocomplete="new-password"></div><div><label>Role</label><select id="tr"><option value="reviewer">Reviewer (ID checks only)</option><option value="owner">Owner (everything)</option></select></div></div>
   <button id="ta">Add admin</button><div class="msg" id="m3"></div></div>
+ <div class="card own"><h2>Activity log</h2><div id="aud" class="s">Loading</div></div>
+ <div class="card"><h2>Two-step sign-in</h2><div id="tf" class="s"></div><div id="tfs" hidden><div class="s">Add this key to an authenticator app (Google Authenticator, Authy, 1Password): <b id="tk" style="word-break:break-all"></b></div><label for="tc">Then enter the 6-digit code to confirm</label><input id="tc" inputmode="numeric" maxlength="6"><button id="tcb">Confirm</button></div><button id="tb"></button><div class="msg" id="m5"></div></div>
  <div class="card"><h2>Change my password</h2><div class="g"><div><label>Current</label><input id="pc" type="password" autocomplete="current-password"></div><div><label>New (10+)</label><input id="pn" type="password" autocomplete="new-password"></div></div><button id="pb">Change password</button><div class="msg" id="m4"></div></div>
 </div></main>
 <script>
@@ -79,9 +82,9 @@ const num=id=>parseFloat($("#"+id).value);
 function out(){T="";ME=null;sessionStorage.removeItem("at");$("#panel").hidden=true;$("#lo").hidden=true;$("#who").textContent="";$("#login").hidden=false}
 async function boot(){if(!T)return out();const r=await api("/api/admin/me");if(!r.ok)return out();ME=await r.json();show()}
 function show(){$("#login").hidden=true;$("#panel").hidden=false;$("#lo").hidden=false;$("#who").textContent=ME.email+" ("+ME.role+")";
-  document.querySelectorAll(".own").forEach(e=>e.hidden=ME.role!=="owner");queue();if(ME.role==="owner"){live();ratesLoad();feesLoad();team()}}
-$("#in").onclick=async()=>{$("#m0").textContent="";const r=await fetch("/api/admin/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email:$("#em").value,password:$("#pw").value})});
-  if(!r.ok)return $("#m0").textContent=await why(r);const j=await r.json();T=j.token;sessionStorage.setItem("at",T);$("#pw").value="";ME={email:j.email,role:j.role};show()};
+  document.querySelectorAll(".own").forEach(e=>e.hidden=ME.role!=="owner");queue();sec();if(ME.role==="owner"){live();ratesLoad();feesLoad();team();audit()}}
+$("#in").onclick=async()=>{$("#m0").textContent="";const r=await fetch("/api/admin/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email:$("#em").value,password:$("#pw").value,code:$("#oc").value})});
+  if(!r.ok)return $("#m0").textContent=await why(r);const j=await r.json();if(j.need2fa){$("#ocw").hidden=false;$("#oc").focus();$("#m0").textContent="Enter the code from your authenticator app.";return}T=j.token;$("#oc").value="";sessionStorage.setItem("at",T);$("#pw").value="";ME={email:j.email,role:j.role};show()};
 $("#su").onclick=async()=>{const r=await fetch("/api/admin/setup",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({setupKey:$("#sk").value,email:$("#se").value,password:$("#sp").value})});
   $("#ms").textContent=r.ok?"Saved. Now sign in above.":await why(r);if(r.ok){$("#sk").value=$("#sp").value=""}};
 $("#lo").onclick=async()=>{await api("/api/admin/logout",{}).catch(()=>{});out()};
@@ -105,5 +108,11 @@ async function team(){const r=await api("/api/admin/users");if(!r.ok)return;cons
 $("#team").onclick=async e=>{const a=e.target.closest("[data-rm]");if(!a)return;e.preventDefault();if(!confirm("Remove "+a.dataset.rm+"?"))return;const r=await api("/api/admin/users",{email:a.dataset.rm},"DELETE");r.ok?team():alert(await why(r))};
 $("#ta").onclick=async()=>{const r=await api("/api/admin/users",{email:$("#te").value,password:$("#tp").value,role:$("#tr").value});$("#m3").textContent=r.ok?"Admin added.":await why(r);if(r.ok){$("#te").value=$("#tp").value="";team()}};
 $("#pb").onclick=async()=>{const r=await api("/api/admin/password",{current:$("#pc").value,next:$("#pn").value});$("#m4").textContent=r.ok?"Password changed.":await why(r);if(r.ok)$("#pc").value=$("#pn").value=""};
+function sec(){$("#tf").textContent=ME.totp?"On. A code is required every time you sign in.":"Off. Turn it on to protect ID photos.";$("#tb").textContent=ME.totp?"Turn off":"Turn on";$("#tfs").hidden=true}
+async function me(){const r=await api("/api/admin/me");if(r.ok){ME=await r.json();sec()}}
+$("#tb").onclick=async()=>{if(ME.totp){const pw=prompt("Enter your password to turn off two-step sign-in:");if(!pw)return;const r=await api("/api/admin/2fa",{action:"disable",password:pw});$("#m5").textContent=r.ok?"Turned off.":await why(r);await me();return}
+  const r=await api("/api/admin/2fa",{action:"start"});if(!r.ok)return $("#m5").textContent=await why(r);const j=await r.json();$("#tk").textContent=j.secret;$("#tfs").hidden=false;$("#m5").textContent=""};
+$("#tcb").onclick=async()=>{const r=await api("/api/admin/2fa",{action:"confirm",code:$("#tc").value});$("#m5").textContent=r.ok?"Two-step sign-in is on.":await why(r);if(r.ok){$("#tc").value="";await me()}};
+async function audit(){const r=await api("/api/admin/audit");if(!r.ok)return;const l=await r.json();$("#aud").innerHTML=l.length?l.map(x=>`<div>${esc(x.t.slice(0,16).replace("T"," "))} - ${esc(x.who)}: ${esc(x.action)}${x.detail?" ("+esc(x.detail)+")":""}</div>`).join(""):"Nothing yet."}
 boot();
 </script></body></html>

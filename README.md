@@ -22,3 +22,6 @@ Only users with an approved ID reach `/api/transfers`. Posting a transfer return
 
 ## Before real launch
 Licensed payments partner and Reserve Bank of Malawi authorisation, lawyer review of the privacy notice, `supportEmail` in `rates.json`.
+
+## Security
+`_headers` sets browser protections (no framing, strict content policy, no referrer, HTTPS only). IDs are checked as real JPEG photos, adults only, with a limit of 5 submissions per 15 minutes. Code requests are limited per phone and per connection. Admins use hashed passwords, optional authenticator-app codes, lockouts, 12-hour sessions and an activity log (kept 90 days). User sign-out ends the session on the server too.
