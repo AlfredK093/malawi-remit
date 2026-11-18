@@ -40,6 +40,11 @@ async function rates(request, env, ctx) {
 
 /* ---------- SMS sign-in ---------- */
 async function sendSms(env, to, text) {
+  const r = await sendSmsRaw(env, to, text);
+  if (!r.ok && env.KV) { try { await env.KV.put("smsfail", String((parseInt(await env.KV.get("smsfail")) || 0) + 1), { expirationTtl: 3600 }); } catch (e) {} }
+  return r;
+}
+async function sendSmsRaw(env, to, text) {
   if (env.AT_API_KEY && env.AT_USERNAME) {
     const host = env.AT_USERNAME === "sandbox" ? "api.sandbox.africastalking.com" : "api.africastalking.com";
     const f = new URLSearchParams({ username: env.AT_USERNAME, to, message: text }); if (env.AT_SENDER_ID) f.set("from", env.AT_SENDER_ID);
@@ -105,7 +110,10 @@ async function kyc(request, env) {
   await bump(env, rk);
   const old = await env.KV.get(kkey(phone), "json");
   if (old && old.status === "approved") return J({ status: "approved" });
-  await env.KV.put(kkey(phone), JSON.stringify({ phone, name: String(b.name).slice(0, 100), dob: b.dob, idType: String(b.idType).slice(0, 30), idLast4: String(b.idLast4).slice(0, 4), address: String(b.address || "").slice(0, 150), idImg: b.idImg, selfie: b.selfie, status: "pending", consentAt: new Date().toISOString(), consentVersion: "2026-11", submitted: new Date().toISOString() }));
+  const pk = "pending:" + Date.now() + ":" + kkey(phone).slice(4);
+  if (old && old.pendingKey) await env.KV.delete(old.pendingKey);
+  await env.KV.put(pk, "1");
+  await env.KV.put(kkey(phone), JSON.stringify({ pendingKey: pk, phone, name: String(b.name).slice(0, 100), dob: b.dob, idType: String(b.idType).slice(0, 30), idLast4: String(b.idLast4).slice(0, 4), address: String(b.address || "").slice(0, 150), idImg: b.idImg, selfie: b.selfie, status: "pending", consentAt: new Date().toISOString(), consentVersion: "2026-11", submitted: new Date().toISOString() }));
   return J({ status: "pending" });
 }
 
@@ -258,6 +266,59 @@ async function adminLimits(request, env) {
   await audit(env, adm.email, "custom limit set", "+" + d + " " + b.daily + "/" + b.monthly); return J({ ok: true });
 }
 
+/* ---------- monitoring ---------- */
+async function health(request, env, ctx) {
+  const problems = [], warnings = [], info = {}, n = async k => parseInt(await env.KV.get(k)) || 0;
+  try {
+    const R = await (await rates(request, env, ctx)).json();
+    if (!R.perUnit) problems.push("Rates are unavailable");
+    else { info.ratesDate = R.updated; if (R.stale) problems.push("Rates are out of date (last " + R.updated + ")"); if (R.override) warnings.push("A manual rate override is switched on"); }
+  } catch (e) { problems.push("The rates check failed"); }
+  if (env.AT_API_KEY && env.AT_USERNAME) {
+    try {
+      const host = env.AT_USERNAME === "sandbox" ? "api.sandbox.africastalking.com" : "api.africastalking.com";
+      const j = await (await fetch(`https://${host}/version1/user?username=${encodeURIComponent(env.AT_USERNAME)}`, { headers: { apiKey: env.AT_API_KEY, accept: "application/json" } })).json().catch(() => null);
+      const bal = parseFloat(String(j && j.UserData && j.UserData.balance).replace(/[^0-9.\-]/g, ""));
+      if (isFinite(bal)) { info.smsBalance = j.UserData.balance; if (bal < (parseFloat(env.SMS_MIN_BALANCE) || 5)) problems.push("SMS balance is low (" + j.UserData.balance + ")"); }
+      else warnings.push("Could not read the SMS balance");
+    } catch (e) { warnings.push("Could not read the SMS balance"); }
+  }
+  const sf = await n("smsfail"), er = await n("err5xx");
+  if (sf >= 3) problems.push("Text messages are failing (" + sf + " in the last hour)");
+  if (er >= 5) problems.push("Server errors are rising (" + er + " in the last hour)");
+  const { keys } = await env.KV.list({ prefix: "pending:", limit: 1 });
+  if (keys[0] && Number(keys[0].name.split(":")[1]) < Date.now() - 864e5) problems.push("ID checks have been waiting over 24 hours");
+  if (env.DB) {
+    try {
+      await ensureDb(env);
+      const ago = h => new Date(Date.now() - h * 36e5).toISOString(), c = async (sql, a) => (await env.DB.prepare(sql).bind(a).first()).n;
+      const rf = await c("SELECT COUNT(*) AS n FROM refunds WHERE status='due' AND created<?", ago(24)); if (rf) problems.push(rf + " refund(s) owed for over 24 hours");
+      const pd = await c("SELECT COUNT(*) AS n FROM transfers WHERE status='paid' AND updated<?", ago(24)); if (pd) problems.push(pd + " paid transfer(s) not sent for over 24 hours");
+      const st = await c("SELECT COUNT(*) AS n FROM transfers WHERE status='sent' AND updated<?", ago(48)); if (st) problems.push(st + " sent transfer(s) not completed for over 48 hours");
+      const aw = await c("SELECT COUNT(*) AS n FROM transfers WHERE status='awaiting_payment' AND created<?", ago(24)); if (aw) warnings.push(aw + " transfer(s) awaiting payment for over 24 hours");
+    } catch (e) { warnings.push("Could not check transfers"); }
+  }
+  return { ok: !problems.length, problems, warnings, info, checked: new Date().toISOString() };
+}
+// For an uptime monitor (checks every 5 minutes): 200 = fine, 503 = a problem. Also texts ALERT_PHONE once per new problem.
+async function statusEndpoint(request, env, ctx) {
+  if (!env.MONITOR_KEY) return J({ error: "Set MONITOR_KEY to use this." }, 501);
+  const k = request.headers.get("x-monitor-key") || new URL(request.url).searchParams.get("key") || "";
+  if (!same(k, env.MONITOR_KEY)) return J({ error: "Unauthorized" }, 401);
+  const h = await health(request, env, ctx);
+  if (h.ok) await env.KV.delete("alert:sig");
+  else if (env.ALERT_PHONE && hasSms(env)) {
+    const sig = h.problems.join("|");
+    if ((await env.KV.get("alert:sig")) !== sig) { await env.KV.put("alert:sig", sig, { expirationTtl: 21600 }); await sendSms(env, norm(env.ALERT_PHONE), "Malawi Remit alert: " + h.problems.join("; ").slice(0, 140)); }
+  }
+  return J(h, h.ok ? 200 : 503);
+}
+async function adminStatus(request, env, ctx) {
+  const adm = await isAdmin(request, env); if (!adm) return J({ error: "Unauthorized" }, 401);
+  if (adm.role !== "owner") return J({ error: "Owner only" }, 403);
+  return J(await health(request, env, ctx));
+}
+
 async function adminTransfers(request, env) {
   const adm = await isAdmin(request, env); if (!adm) return J({ error: "Unauthorized" }, 401);
   if (adm.role !== "owner") return J({ error: "Owner only" }, 403);
@@ -304,6 +365,7 @@ async function adminKyc(request, env) {
   if (!b || !["approved", "rejected"].includes(b.decision)) return J({ error: "Invalid decision" }, 400);
   const k = kkey(b.phone), rec = await env.KV.get(k, "json"); if (!rec) return J({ error: "Not found" }, 404);
   delete rec.idImg; delete rec.selfie;
+  if (rec.pendingKey) { await env.KV.delete(rec.pendingKey); delete rec.pendingKey; }
   Object.assign(rec, { decidedBy: adm.email, status: b.decision, reason: String(b.reason || "").slice(0, 200), decided: new Date().toISOString() });
   await env.KV.put(k, JSON.stringify(rec)); await audit(env, adm.email, "ID " + b.decision, rec.phone + " " + rec.name);
   let sms = false;
@@ -421,6 +483,8 @@ export default {
       if (p === "/api/otp") return otp(request, env);
       if (p === "/api/kyc") return kyc(request, env);
       if (p === "/api/transfers") return transfers(request, env, ctx);
+      if (p === "/api/status") return statusEndpoint(request, env, ctx);
+      if (p === "/api/admin/status") return adminStatus(request, env, ctx);
       if (p === "/api/admin/refunds") return adminRefunds(request, env);
       if (p === "/api/admin/report") return adminReport(request, env);
       if (p === "/api/admin/limits") return adminLimits(request, env);
@@ -430,6 +494,6 @@ export default {
       if (p === "/api/admin/fees") return adminFees(request, env);
       if (p === "/api/admin/kyc") return adminKyc(request, env);
       return J({ error: "Not found" }, 404);
-    } catch (e) { return J({ error: "Server error", detail: String((e && e.message) || e).slice(0, 120) }, 500); }
+    } catch (e) { try { if (env.KV) await env.KV.put("err5xx", String((parseInt(await env.KV.get("err5xx")) || 0) + 1), { expirationTtl: 3600 }); } catch (x) {} return J({ error: "Server error", detail: String((e && e.message) || e).slice(0, 120) }, 500); }
   }
 };

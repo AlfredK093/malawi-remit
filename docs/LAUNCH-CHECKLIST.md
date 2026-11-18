@@ -93,7 +93,8 @@ Tick every box. Anything you cannot tick is a reason to wait. Use a separate tes
 - [ ] Insurance and who is responsible when a payout goes wrong.
 
 ## 8. Operations
-- [ ] Alerts: someone is told when rates fail to load, SMS stops sending (Africa's Talking balance low), or sign-in errors spike. Check Cloudflare real-time logs weekly.
+- [ ] `MONITOR_KEY` is set and an uptime monitor checks `/api/status?key=...` every 5 minutes with email alerts to at least two people; `ALERT_PHONE` is set. Test it: lower `SMS_MIN_BALANCE` above your balance and confirm the alert arrives, then set it back. Check Cloudflare real-time logs weekly.
+- [ ] Cloudflare notifications are on for failed deployments, so a broken update does not go unnoticed.
 - [ ] Keep an Africa's Talking balance for at least 2 weeks of messages.
 - [ ] Daily routine written down: review ID queue, process paid/sent/failed, pay refunds, run the Daily report and match it to Airtel/TNM/bank and payout statements, clear any stale unpaid transfers.
 - [ ] Runbook for: rates stuck, SMS not arriving, customer says money missing, wrong payout, lost admin phone (reset via setup key), suspected breach (rotate every secret, remove admins, check the activity log).

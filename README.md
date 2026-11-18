@@ -47,3 +47,8 @@ Daily and monthly limits (MWK) per person are set in `/admin` > Fees and limits 
 
 ## Testing and launch
 `node --no-warnings tests/server.test.mjs` runs 45 server checks (Node 22+); `npm i jsdom` then `node --no-warnings tests/ui.smoke.mjs` walks the customer app in a simulated browser. Work through `docs/LAUNCH-CHECKLIST.md` before real customers use the app. The `docs/` and `tests/` folders are never served to the public.
+
+## Monitoring and alerts
+- `/admin` > System status (owners) shows live problems: rates missing or out of date, SMS balance low, texts failing, server errors rising, ID checks waiting over 24 hours, refunds owed over 24 hours, paid transfers not sent over 24 hours.
+- For alerts when nobody is looking, set `MONITOR_KEY` (a long random secret) and add a free uptime monitor (for example UptimeRobot or Better Stack) that checks `https://YOURSITE/api/status?key=YOURKEY` every 5 minutes and emails you. It gets 200 when all is well and 503 when something needs attention.
+- Optional: `ALERT_PHONE` (your number) makes the app text you once for each new problem; `SMS_MIN_BALANCE` sets the low-balance level (default 5, in your Africa's Talking currency).
