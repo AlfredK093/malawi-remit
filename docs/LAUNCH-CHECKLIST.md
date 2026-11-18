@@ -7,7 +7,8 @@ Tick every box. Anything you cannot tick is a reason to wait. Use a separate tes
 - [ ] `/api/rates` shows today's Reserve Bank of Malawi date and a USD rate close to the bank's published figure.
 - [ ] `_headers`, `_worker.js`, `_routes.json`, `index.html`, `admin.html`, `sw.js`, `manifest.json`, `rates.json`, `icons/` are at the top level of the repo.
 - [ ] `/docs/LAUNCH-CHECKLIST.md` and `/tests/server.test.mjs` return "Not found" on the live site.
-- [ ] `node --no-warnings tests/server.test.mjs` passes (all PASS).
+- [ ] `node --no-warnings tests/server.test.mjs` passes (all PASS). After `npm i jsdom`, `node --no-warnings tests/ui.smoke.mjs` also passes (walks sign-up, ID, approval, transfer, receipt, Chichewa and account deletion in a simulated browser).
+- [ ] In a real browser, open the developer console on the app and admin pages: no red "Refused to execute" or "Content Security Policy" errors appear.
 - [ ] `supportEmail` and `payInstructions` are filled in `rates.json`.
 - [ ] Custom domain is connected (instead of `pages.dev`) and shows a padlock.
 
@@ -107,7 +108,7 @@ Tick every box. Anything you cannot tick is a reason to wait. Use a separate tes
 ## 10. Known limits of this build (so nobody is surprised)
 - It does not take or send money itself. Payments are confirmed by hand by an owner.
 - Rate limits and lockouts use Cloudflare KV, which can lag by a moment. A busy live service should move these counters to a stricter store.
-- The page's security policy still allows inline scripts, which weakens protection against injected code. Moving to separate script files fixes this.
+- Scripts now load only from the site's own files (`app.js`, `admin.js`) and Cloudflare's check, so injected scripts are blocked. The security policy still allows inline styles, which is a much smaller risk.
 - Full recipient account numbers are stored in D1 unencrypted by the app (Cloudflare encrypts storage at rest). Consider field-level encryption before volume.
 - No transaction monitoring, sanctions screening or fraud scoring.
 - Limits only count transfers made in this app.
