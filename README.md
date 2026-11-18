@@ -39,3 +39,8 @@ How it works: the server re-checks the rate, fee and limits, locks them in, and 
 
 ## Per-person limits
 Daily and monthly limits (MWK) per person are set in `/admin` > Fees and limits (defaults in `rates.json`). They are enforced on the server when a transfer is created, counted in Malawi time (reset at midnight), and cancelled or failed transfers do not count. The send screen shows how much a person has left. Owners can set a custom limit for one person under Custom limits. Set limits to match Reserve Bank of Malawi requirements.
+
+## Refunds, daily report, Chichewa
+- Refunds: if an admin marks a transfer failed after it was paid or sent, a refund is created automatically (full amount). Owners pay it back outside the app, then press Mark refunded in /admin; the customer is texted and the receipt shows the refund.
+- Daily report (/admin > Daily report): totals for a Malawi day, money in flight, refunds still owed, stale unpaid transfers, plus a CSV of every transfer event that day for matching against your Airtel/TNM/bank and payout partner statements.
+- Chichewa: a language button in the header switches the customer app. The wording is a first draft and must be reviewed by a native Chichewa speaker before launch. The privacy notice and help answers stay in English until they are professionally translated. SMS messages are in English.

@@ -123,7 +123,8 @@ async function ensureDb(env) {
     env.DB.prepare("CREATE TABLE IF NOT EXISTS transfers (id TEXT PRIMARY KEY, ref TEXT UNIQUE, idem TEXT, phone TEXT, sender TEXT, created TEXT, updated TEXT, amount_minor INTEGER, fee_minor INTEGER, rate REAL, currency TEXT, receive_minor INTEGER, method TEXT, r_name TEXT, r_country TEXT, r_bank TEXT, r_acct TEXT, r_swift TEXT, status TEXT, note TEXT)"),
     env.DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS t_idem ON transfers (phone, idem)"),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS t_phone ON transfers (phone, created)"),
-    env.DB.prepare("CREATE TABLE IF NOT EXISTS transfer_events (id INTEGER PRIMARY KEY AUTOINCREMENT, tid TEXT, t TEXT, actor TEXT, status TEXT, note TEXT)")
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS transfer_events (id INTEGER PRIMARY KEY AUTOINCREMENT, tid TEXT, t TEXT, actor TEXT, status TEXT, note TEXT)"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS refunds (id TEXT PRIMARY KEY, tid TEXT UNIQUE, ref TEXT, phone TEXT, amount_minor INTEGER, status TEXT, created TEXT, updated TEXT, actor TEXT, note TEXT)")
   ]);
   schemaReady = true;
 }
@@ -140,7 +141,7 @@ const PAY_METHODS = ["Airtel Money", "TNM Mpamba", "Bank account"];
 const NEXT = { awaiting_payment: ["paid", "failed", "cancelled"], paid: ["sent", "failed"], sent: ["completed", "failed"] };
 const mk = n => Math.round(n * 100);
 const newRef = () => { const A = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"; let o = ""; for (const x of crypto.getRandomValues(new Uint8Array(8))) o += A[x % A.length]; return "MW-" + o; };
-const view = (r, events) => ({ id: r.id, ref: r.ref, created: r.created, updated: r.updated, status: r.status, amount: r.amount_minor / 100, fee: r.fee_minor / 100, rate: r.rate, currency: r.currency, receive: r.receive_minor / 100, method: r.method, note: r.note || "", recipient: { name: r.r_name, country: r.r_country, bank: r.r_bank, acct: "****" + String(r.r_acct).slice(-4), swift: r.r_swift }, events });
+const view = (r, events, refund) => ({ id: r.id, ref: r.ref, created: r.created, updated: r.updated, status: r.status, amount: r.amount_minor / 100, fee: r.fee_minor / 100, rate: r.rate, currency: r.currency, receive: r.receive_minor / 100, method: r.method, note: r.note || "", recipient: { name: r.r_name, country: r.r_country, bank: r.r_bank, acct: "****" + String(r.r_acct).slice(-4), swift: r.r_swift }, events, refund: refund ? { status: refund.status, amount: refund.amount_minor / 100 } : undefined });
 const evIns = (env, tid, t, actor, status, note) => env.DB.prepare("INSERT INTO transfer_events (tid,t,actor,status,note) VALUES (?,?,?,?,?)").bind(tid, t, actor, status, note);
 
 // Only ID-approved users reach this. Creating transfers needs TRANSFERS_ENABLED=true and a D1 database.
@@ -155,7 +156,8 @@ async function transfers(request, env, ctx) {
     if (id) {
       const r = await env.DB.prepare("SELECT * FROM transfers WHERE id=? AND phone=?").bind(id, a.phone).first(); if (!r) return J({ error: "Not found" }, 404);
       const ev = await env.DB.prepare("SELECT t,status,note FROM transfer_events WHERE tid=? ORDER BY id").bind(id).all();
-      return J(view(r, ev.results));
+      const rf = await env.DB.prepare("SELECT * FROM refunds WHERE tid=?").bind(id).first();
+      return J(view(r, ev.results, rf));
     }
     const { results } = await env.DB.prepare("SELECT * FROM transfers WHERE phone=? ORDER BY created DESC LIMIT 50").bind(a.phone).all();
     return J(results.map(r => view(r)));
@@ -202,6 +204,47 @@ async function transfers(request, env, ctx) {
   return J(view(row, [{ t: now, status: "awaiting_payment", note: "" }]), 201);
 }
 
+async function adminRefunds(request, env) {
+  const adm = await isAdmin(request, env); if (!adm) return J({ error: "Unauthorized" }, 401);
+  if (adm.role !== "owner") return J({ error: "Owner only" }, 403);
+  if (!env.DB) return J({ error: "D1 database not bound" }, 501);
+  await ensureDb(env);
+  if (request.method === "GET") { const { results } = await env.DB.prepare("SELECT * FROM refunds ORDER BY (status='due') DESC, created DESC LIMIT 100").all(); return J(results.map(x => ({ id: x.id, ref: x.ref, phone: x.phone, amount: x.amount_minor / 100, status: x.status, created: x.created, note: x.note }))); }
+  const b = await request.json().catch(() => null); if (!b) return J({ error: "Bad request" }, 400);
+  const x = await env.DB.prepare("SELECT * FROM refunds WHERE id=?").bind(String(b.id)).first();
+  if (!x || x.status !== "due") return J({ error: "This refund is not waiting to be paid." }, 400);
+  const now = new Date().toISOString(), note = String(b.note || "").slice(0, 200);
+  await env.DB.batch([env.DB.prepare("UPDATE refunds SET status='refunded', updated=?, actor=?, note=? WHERE id=?").bind(now, adm.email, note, x.id), evIns(env, x.tid, now, adm.email, "refunded", note)]);
+  await audit(env, adm.email, "refund paid", x.ref + " MWK " + x.amount_minor / 100);
+  let sms = true;
+  if (hasSms(env)) { try { sms = (await sendSms(env, x.phone, "Malawi Remit: your refund of MWK " + (x.amount_minor / 100).toLocaleString("en-GB") + " for transfer " + x.ref + " has been sent.")).ok; } catch (e) { sms = false; } }
+  return J({ ok: true, sms });
+}
+
+// Daily reconciliation (Malawi dates). Compare "payments received" with your Airtel/TNM/bank statements and "sent" with your payout partner's.
+async function adminReport(request, env) {
+  const adm = await isAdmin(request, env); if (!adm) return J({ error: "Unauthorized" }, 401);
+  if (adm.role !== "owner") return J({ error: "Owner only" }, 403);
+  if (!env.DB) return J({ error: "D1 database not bound" }, 501);
+  await ensureDb(env);
+  const u = new URL(request.url), date = u.searchParams.get("date") || new Date(Date.now() + CAT).toISOString().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return J({ error: "Use a date like 2026-11-18." }, 400);
+  const [y, mo, d] = date.split("-").map(Number), s0 = Date.UTC(y, mo - 1, d) - CAT, from = new Date(s0).toISOString(), to = new Date(s0 + 864e5).toISOString();
+  const ev = (await env.DB.prepare("SELECT e.t AS et, e.status AS es, e.actor AS actor, t.* FROM transfer_events e JOIN transfers t ON t.id=e.tid WHERE e.t>=? AND e.t<? ORDER BY e.t").bind(from, to).all()).results;
+  if (u.searchParams.get("format") === "csv") {
+    const q = v => { let s = String(v ?? ""); if (/^[=+\-@]/.test(s)) s = "'" + s; return '"' + s.replace(/"/g, '""') + '"'; };
+    const rows = ["time_utc,reference,event,by,sender,sender_phone,amount_mwk,fee_mwk,currency,receive,method"].concat(ev.map(x => [x.et, x.ref, x.es, x.actor, x.sender, x.phone, x.amount_minor / 100, x.fee_minor / 100, x.currency, x.receive_minor / 100, x.method].map(q).join(",")));
+    return new Response(rows.join("\n"), { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": 'attachment; filename="report-' + date + '.csv"', "cache-control": "no-store", "x-content-type-options": "nosniff" } });
+  }
+  const created = (await env.DB.prepare("SELECT amount_minor FROM transfers WHERE created>=? AND created<?").bind(from, to).all()).results;
+  const by = s => ev.filter(x => x.es === s), sum = (l, f) => l.reduce((n, x) => n + f(x), 0), sentBy = {};
+  for (const x of by("sent")) sentBy[x.currency] = Math.round(((sentBy[x.currency] || 0) + x.receive_minor / 100) * 100) / 100;
+  const due = await env.DB.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(amount_minor),0) AS s FROM refunds WHERE status='due'").first();
+  const fl = await env.DB.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(amount_minor),0) AS s FROM transfers WHERE status IN ('paid','sent')").first();
+  const stale = await env.DB.prepare("SELECT COUNT(*) AS n FROM transfers WHERE status='awaiting_payment' AND created<?").bind(new Date(Date.now() - 864e5).toISOString()).first();
+  return J({ date, created: { count: created.length, mwk: sum(created, x => x.amount_minor) / 100 }, paymentsIn: { count: by("paid").length, mwk: sum(by("paid"), x => x.amount_minor) / 100 }, sent: { count: by("sent").length, byCurrency: sentBy }, completed: { count: by("completed").length, feesMWK: sum(by("completed"), x => x.fee_minor) / 100 }, failed: { count: by("failed").length }, refundedToday: { count: by("refunded").length, mwk: sum(by("refunded"), x => x.amount_minor) / 100 }, refundsDue: { count: due.n, mwk: due.s / 100 }, inFlight: { count: fl.n, mwk: fl.s / 100 }, staleAwaitingPayment: stale.n });
+}
+
 async function adminLimits(request, env) {
   const adm = await isAdmin(request, env); if (!adm) return J({ error: "Unauthorized" }, 401);
   if (adm.role !== "owner") return J({ error: "Owner only" }, 403);
@@ -228,9 +271,12 @@ async function adminTransfers(request, env) {
   const r = await env.DB.prepare("SELECT * FROM transfers WHERE id=?").bind(String(b.id)).first(); if (!r) return J({ error: "Not found" }, 404);
   if (!(NEXT[r.status] || []).includes(b.status)) return J({ error: "Cannot move from " + r.status + " to " + b.status }, 400);
   const now = new Date().toISOString(), note = String(b.note || "").slice(0, 200);
-  await env.DB.batch([env.DB.prepare("UPDATE transfers SET status=?, updated=?, note=? WHERE id=?").bind(b.status, now, note, r.id), evIns(env, r.id, now, adm.email, b.status, note)]);
+  const ops = [env.DB.prepare("UPDATE transfers SET status=?, updated=?, note=? WHERE id=?").bind(b.status, now, note, r.id), evIns(env, r.id, now, adm.email, b.status, note)];
+  const refund = b.status === "failed" && (r.status === "paid" || r.status === "sent"); // money was received, so it is owed back
+  if (refund) ops.push(env.DB.prepare("INSERT INTO refunds (id,tid,ref,phone,amount_minor,status,created,updated,actor,note) VALUES (?,?,?,?,?,?,?,?,?,?)").bind(crypto.randomUUID(), r.id, r.ref, r.phone, r.amount_minor, "due", now, now, adm.email, note), evIns(env, r.id, now, adm.email, "refund_due", ""));
+  await env.DB.batch(ops);
   await audit(env, adm.email, "transfer " + b.status, r.ref);
-  const txt = { paid: "we have received your payment", sent: "has been sent to the recipient's bank", completed: "is complete", failed: "could not be completed" + (note ? " (" + note.slice(0, 60) + ")" : "") }[b.status];
+  const txt = { paid: "we have received your payment", sent: "has been sent to the recipient's bank", completed: "is complete", failed: "could not be completed" + (note ? " (" + note.slice(0, 60) + ")" : "") + (r.status === "paid" || r.status === "sent" ? ". Your payment will be refunded" : "") }[b.status];
   let sms = true;
   if (txt && hasSms(env)) { try { sms = (await sendSms(env, r.phone, "Malawi Remit: transfer " + r.ref + " " + txt + ".")).ok; } catch (e) { sms = false; } }
   return J({ ok: true, sms });
@@ -374,6 +420,8 @@ export default {
       if (p === "/api/otp") return otp(request, env);
       if (p === "/api/kyc") return kyc(request, env);
       if (p === "/api/transfers") return transfers(request, env, ctx);
+      if (p === "/api/admin/refunds") return adminRefunds(request, env);
+      if (p === "/api/admin/report") return adminReport(request, env);
       if (p === "/api/admin/limits") return adminLimits(request, env);
       if (p === "/api/admin/transfers") return adminTransfers(request, env);
       if (p === "/api/admin/rates") return adminRates(request, env);
