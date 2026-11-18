@@ -44,3 +44,6 @@ Daily and monthly limits (MWK) per person are set in `/admin` > Fees and limits 
 - Refunds: if an admin marks a transfer failed after it was paid or sent, a refund is created automatically (full amount). Owners pay it back outside the app, then press Mark refunded in /admin; the customer is texted and the receipt shows the refund.
 - Daily report (/admin > Daily report): totals for a Malawi day, money in flight, refunds still owed, stale unpaid transfers, plus a CSV of every transfer event that day for matching against your Airtel/TNM/bank and payout partner statements.
 - Chichewa: a language button in the header switches the customer app. The wording is a first draft and must be reviewed by a native Chichewa speaker before launch. The privacy notice and help answers stay in English until they are professionally translated. SMS messages are in English.
+
+## Testing and launch
+`node --no-warnings tests/server.test.mjs` runs 45 server checks (Node 22+). Work through `docs/LAUNCH-CHECKLIST.md` before real customers use the app. The `docs/` and `tests/` folders are never served to the public.

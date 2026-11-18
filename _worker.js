@@ -410,6 +410,7 @@ async function adminAuth(request, env, action) {
 export default {
   async fetch(request, env, ctx) {
     const p = new URL(request.url).pathname;
+    if (/^\/(docs|tests)\//.test(p)) return new Response("Not found", { status: 404 }); // internal files are never served
     if (!p.startsWith("/api/")) return env.ASSETS.fetch(request);
     try {
       if (p === "/api/config") return J({ turnstile: env.TURNSTILE_SITEKEY && env.TURNSTILE_SECRET ? env.TURNSTILE_SITEKEY : "", transfers: env.TRANSFERS_ENABLED === "true" && !!env.DB }, 200, "public, max-age=300");
