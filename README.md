@@ -46,7 +46,7 @@ Daily and monthly limits (MWK) per person are set in `/admin` > Fees and limits 
 - Chichewa: a language button in the header switches the customer app. The wording is a first draft and must be reviewed by a native Chichewa speaker before launch. The privacy notice and help answers stay in English until they are professionally translated. SMS messages are in English.
 
 ## Testing and launch
-`node --no-warnings tests/server.test.mjs` runs 45 server checks (Node 22+); `npm i jsdom` then `node --no-warnings tests/ui.smoke.mjs` walks the customer app in a simulated browser. Work through `docs/LAUNCH-CHECKLIST.md` before real customers use the app. The `docs/` and `tests/` folders are never served to the public.
+`node --no-warnings tests/server.test.mjs` runs 45 server checks (Node 22+); `npm i jsdom` then `node --no-warnings tests/ui.smoke.mjs` walks the customer app in a simulated browser. Work through `docs/LAUNCH-CHECKLIST.md` before real customers use the app. `docs/DECISIONS-AND-OUTSIDE-HELP.md` lists what still needs your decision or an outside party. The `docs/` and `tests/` folders are never served to the public.
 
 ## Monitoring and alerts
 - `/admin` > System status (owners) shows live problems: rates missing or out of date, SMS balance low, texts failing, server errors rising, ID checks waiting over 24 hours, refunds owed over 24 hours, paid transfers not sent over 24 hours.

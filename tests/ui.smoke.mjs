@@ -59,7 +59,11 @@ await api("/api/admin/setup", { body: { setupKey: "setup", email: "a@b.co", pass
 const at = (await api("/api/admin/login", { body: { email: "a@b.co", password: "longpassword1" } })).j.token;
 const q = (await api("/api/admin/kyc", {}, at)).j; ok("admin sees submission with consent", q.length === 1 && q[0].consentAt && q[0].name === "Mary Banda", JSON.stringify(q).slice(0, 100));
 const ap = await api("/api/admin/kyc", { body: { phone: q[0].phone, decision: "approved" } }, at); ok("approve + SMS", ap.j.sms === true, JSON.stringify(ap));
-await click('[data-a="check"]'); await sleep(150); ok("home after approval, tabs visible", text().includes("Hello, Mary") && !$("#tabs").hidden, text().slice(0, 200));
+await click('[data-a="check"]'); await sleep(150);
+ok("greeting screen after approval (no tabs, rates shown)", /Good (morning|afternoon|evening), Mary/.test(text()) && text().includes("Your ID is verified") && text().includes("USD") && $("#tabs").hidden && !!$('[data-a="start"]'), text().slice(0, 250));
+await click('[data-a="lang"]'); ok("greeting in Chichewa", /Mwadzuka bwanji, Mary|Mwaswera bwanji, Mary/.test(text()) && text().includes("Tumizani ndalama"), text().slice(0, 200)); await click('[data-a="lang"]');
+await click('[data-a="start"]'); await sleep(120); ok("Send money goes to the sending screen with tabs", text().includes("Hello, Mary") && !$("#tabs").hidden && !!$("#amt"), text().slice(0, 200));
+w.document.dispatchEvent(new w.Event("visibilitychange")); await sleep(150); ok("returning to the tab does not show the greeting again", !!$("#amt"), text().slice(0, 120));
 // reload keeps the user signed in and on Home (no fall back)
 const ls = w.localStorage.getItem("mwuser"); ok("session stored", !!JSON.parse(ls).token);
 await type("#amt", "500000"); await sleep(50);
