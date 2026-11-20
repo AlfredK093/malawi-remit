@@ -20,7 +20,9 @@ The app is built and tested. These are the things only you, or someone outside, 
 ## B. Decisions only you can make
 1. **Fees:** the percentage and the minimum fee (today 1% and MWK 2,000 are placeholders). Is the fee taken from the amount sent (as now) or added on top?
 2. **Limits:** per transfer, per day, per month, per person (today MWK 5,000,000 / 5,000,000 / 20,000,000 are placeholders). Lower limits for new customers?
-3. **Where money can go:** currencies (today USD, GBP, EUR, ZAR) and countries.
+3. **Where money can go:** the app now offers USD, GBP, EUR and every African currency (44). Decide which you can really pay out with your partner, and which are allowed under your licence and sanctions rules. SDG, SSP, ERN, LYD and SOS are off by default; confirm Zimbabwe (ZWG), DR Congo (CDF), Somalia, Libya and others with your compliance adviser before switching them on.
+3a. **Which Reserve Bank rate:** the app uses the middle rate. The bank also publishes a buying and a selling rate; a customer buying foreign currency from a bank normally gets the selling rate, which is less favourable. Ask your partner bank which rate they will actually give you, and whether you can honestly call the middle rate the "bank rate".
+3b. **Cross-rate currencies:** 36 currencies are calculated from the RBM dollar rate, not published by RBM. Decide whether to offer them, and whether to add a margin for the extra rate risk.
 4. **How customers pay you:** Airtel Money, TNM Mpamba, bank. Whose till number or account, and the exact words for "How to pay" (`payInstructions` in `rates.json`).
 5. **Refund policy:** full amount or minus costs, how fast, and how it is paid back. The app currently records a full-amount refund.
 6. **Business details to show:** legal business name, support email and phone, opening hours, physical address, complaints contact.

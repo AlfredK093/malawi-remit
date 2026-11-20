@@ -6,7 +6,7 @@ const num=id=>parseFloat($("#"+id).value);
 function out(){T="";ME=null;sessionStorage.removeItem("at");$("#panel").hidden=true;$("#lo").hidden=true;$("#who").textContent="";$("#login").hidden=false}
 async function boot(){if(!T)return out();const r=await api("/api/admin/me");if(!r.ok)return out();ME=await r.json();show()}
 function show(){$("#login").hidden=true;$("#panel").hidden=false;$("#lo").hidden=false;$("#who").textContent=ME.email+" ("+ME.role+")";
-  document.querySelectorAll(".own").forEach(e=>e.hidden=ME.role!=="owner");queue();sec();if(ME.role==="owner"){live();ratesLoad();feesLoad();team();audit();trs();rfs();stat()}}
+  document.querySelectorAll(".own").forEach(e=>e.hidden=ME.role!=="owner");queue();sec();if(ME.role==="owner"){live();ratesLoad();feesLoad();team();audit();trs();rfs();stat();cur()}}
 $("#in").onclick=async()=>{$("#m0").textContent="";const r=await fetch("/api/admin/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email:$("#em").value,password:$("#pw").value,code:$("#oc").value})});
   if(!r.ok)return $("#m0").textContent=await why(r);const j=await r.json();if(j.need2fa){$("#ocw").hidden=false;$("#oc").focus();$("#m0").textContent="Enter the code from your authenticator app.";return}T=j.token;$("#oc").value="";sessionStorage.setItem("at",T);$("#pw").value="";ME={email:j.email,role:j.role};show()};
 $("#su").onclick=async()=>{const r=await fetch("/api/admin/setup",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({setupKey:$("#sk").value,email:$("#se").value,password:$("#sp").value})});
@@ -57,4 +57,7 @@ $("#rpc").onclick=async()=>{const r=await api("/api/admin/report?format=csv&date
 async function stat(){const r=await api("/api/admin/status");if(!r.ok){$("#stt").textContent=await why(r);return}const j=await r.json();
   $("#stt").innerHTML=(j.ok?'<div class="s"><b>All systems normal.</b></div>':"")+j.problems.map(x=>`<div class="s" style="color:var(--red)"><b>Problem:</b> ${esc(x)}</div>`).join("")+j.warnings.map(x=>`<div class="s">Note: ${esc(x)}</div>`).join("")+`<div class="s">${j.info.smsBalance?"SMS balance: "+esc(j.info.smsBalance)+". ":""}${j.info.ratesDate?"Rates dated "+esc(j.info.ratesDate)+". ":""}Checked ${esc(j.checked.slice(11,16))} UTC.</div>`}
 setInterval(()=>{if(ME&&ME.role==="owner"&&!$("#panel").hidden)stat()},60000);
+async function cur(){const r=await api("/api/admin/currencies");if(!r.ok)return;const j=await r.json(),off=new Set(j.disabled);
+  $("#cu").innerHTML=REGIONS.map(g=>`<div style="margin-top:10px"><b>${esc(g)}</b><br>${CURRENCIES.filter(x=>x[2]===g).map(x=>`<label style="display:inline-flex;gap:6px;align-items:center;margin:6px 14px 0 0;color:var(--ink)"><input type="checkbox" style="width:auto;min-height:0" data-c="${x[0]}" ${off.has(x[0])?"":"checked"}> ${x[0]} ${esc(x[1])}</label>`).join("")}</div>`).join("")}
+$("#cus").onclick=async()=>{const disabled=[...document.querySelectorAll("#cu input[data-c]")].filter(i=>!i.checked).map(i=>i.dataset.c);const r=await api("/api/admin/currencies",{disabled});$("#m7").textContent=r.ok?"Saved. Customers see the change straight away.":await why(r)};
 boot();

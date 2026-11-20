@@ -1,5 +1,8 @@
 // Single-file backend for Cloudflare Pages (replaces the functions/ folder). Routes: /api/*
-const CUR = ["USD", "GBP", "EUR", "ZAR"];
+// RBM publishes these directly. Every other African currency is worked out from the RBM dollar rate and a central-bank dollar rate.
+const RBM_DIRECT = ["USD", "GBP", "EUR", "ZAR", "BWP", "KES", "TZS", "ZMW"];
+const CROSS = ["NAD", "LSL", "SZL", "MZN", "ZWG", "AOA", "UGX", "RWF", "BIF", "ETB", "ERN", "DJF", "SOS", "SSP", "SDG", "MGA", "MUR", "SCR", "KMF", "NGN", "GHS", "XOF", "GMD", "GNF", "LRD", "SLE", "CVE", "MRU", "XAF", "CDF", "STN", "EGP", "MAD", "DZD", "TND", "LYD"];
+const CUR = [...RBM_DIRECT, ...CROSS];
 const num = v => typeof v === "number" && isFinite(v) && v > 0;
 const J = (o, s = 200, cc = "no-store") => new Response(JSON.stringify(o), { status: s, headers: { "content-type": "application/json", "cache-control": cc, "x-content-type-options": "nosniff" } });
 const hex = b => [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join("");
@@ -13,29 +16,50 @@ const kkey = p => "kyc:" + String(p).replace(/\D/g, "");
 /* ---------- rates ---------- */
 const pack = (rows, source) => { const perUnit = {}; let d = "9999"; for (const x of rows) { perUnit[x.c] = x.rate; if (x.date && x.date < d) d = x.date; } return { perUnit, updated: d === "9999" ? new Date().toISOString().slice(0, 10) : d, source }; };
 const pick = j => { const r = Array.isArray(j) ? j[0] : j; return { rate: r.rate ?? r.value ?? (r.rates && r.rates.MWK), date: r.date || r.rate_date }; };
-async function fetchRows(urlFor, headers) {
-  return Promise.all(CUR.map(async c => { const r = await fetch(urlFor(c), { headers }); if (!r.ok) throw new Error("rate " + r.status); const { rate, date } = pick(await r.json()); if (!num(rate)) throw new Error("bad"); return { c, rate, date }; }));
+async function directRows(urlFor, headers) {
+  const res = await Promise.allSettled(RBM_DIRECT.map(async c => { const r = await fetch(urlFor(c), { headers }); if (!r.ok) throw new Error("rate " + r.status); const { rate, date } = pick(await r.json()); if (!num(rate)) throw new Error("bad rate"); return { c, rate, date }; }));
+  return res.filter(x => x.status === "fulfilled").map(x => x.value);
+}
+// Fill every currency the source did not give us: MWK per 1 X = (MWK per USD) / (X per USD), one batch call.
+async function addCross(out) {
+  const codes = CUR.filter(c => !out.perUnit[c]); if (!codes.length || !out.perUnit.USD) return;
+  try {
+    const rows = await (await fetch("https://api.frankfurter.dev/v2/rates?base=USD&quotes=" + codes.join(","))).json();
+    for (const x of Array.isArray(rows) ? rows : []) if (codes.includes(x.quote) && num(x.rate)) { out.perUnit[x.quote] = out.perUnit.USD / x.rate; out.basis[x.quote] = "cross"; }
+  } catch (e) {}
+}
+async function autoRates(request, env, ctx) {
+  const cache = caches.default, key = new Request(new URL("/api/rates", request.url).toString());
+  const hit = await cache.match(key); if (hit) return hit.json();
+  const tries = [];
+  if (env.RATES_URL) tries.push(async () => {
+    const j = await (await fetch(env.RATES_URL)).json(), perUnit = {};
+    for (const c of CUR) if (num(j.perUnit && j.perUnit[c])) perUnit[c] = j.perUnit[c];
+    if (!perUnit.USD) throw new Error("bad feed");
+    return { perUnit, updated: j.updated, source: j.source || "Bank rate feed", basis: Object.fromEntries(Object.keys(perUnit).map(c => [c, "feed"])) };
+  });
+  tries.push(async () => { const o = pack(await directRows(c => `https://api.frankfurter.dev/v2/rate/${c}/MWK?providers=RBM`), "Reserve Bank of Malawi official reference rate"); if (!o.perUnit.USD) throw new Error("no USD"); o.basis = Object.fromEntries(Object.keys(o.perUnit).map(c => [c, "rbm"])); return o; });
+  if (env.ALLRATES_KEY) tries.push(async () => { const o = pack(await directRows(c => `https://allratestoday.com/api/v1/central-bank/rbm/latest?source=${c}&target=MWK`, { authorization: "Bearer " + env.ALLRATES_KEY }), "Reserve Bank of Malawi official rate"); if (!o.perUnit.USD) throw new Error("no USD"); o.basis = Object.fromEntries(Object.keys(o.perUnit).map(c => [c, "rbm"])); return o; });
+  let out = null;
+  for (const t of tries) { try { out = await t(); break; } catch (e) {} }
+  if (out) await addCross(out);
+  if (out && env.KV) ctx.waitUntil(env.KV.put("rates:last", JSON.stringify(out)));
+  if (!out && env.KV) { const l = await env.KV.get("rates:last", "json"); if (l) out = { ...l, stale: true }; }
+  if (!out) return null;
+  if ((Date.now() - Date.parse(out.updated)) / 864e5 > 4) out.stale = true;
+  if (!out.stale) ctx.waitUntil(cache.put(key, J(out, 200, "public, max-age=900")));
+  return out;
 }
 async function rates(request, env, ctx) {
   const base = await (await env.ASSETS.fetch(new URL("/rates.json", request.url))).json();
-  const fees = env.KV ? (await env.KV.get("fees", "json")) || {} : {};
-  if (env.KV) { const m = await env.KV.get("rates", "json"); if (m && m.perUnit) return J({ ...base, ...m, ...fees, live: true, override: true }); }
-  const cache = caches.default, key = new Request(new URL("/api/rates", request.url).toString());
-  const hit = await cache.match(key); if (hit) return J({ ...(await hit.json()), ...fees });
-  const tries = [];
-  if (env.RATES_URL) tries.push(async () => { const j = await (await fetch(env.RATES_URL)).json(); if (!j.perUnit || !CUR.every(c => num(j.perUnit[c]))) throw 0; return { perUnit: j.perUnit, updated: j.updated, source: j.source || "Bank rate feed" }; });
-  tries.push(async () => pack(await fetchRows(c => `https://api.frankfurter.dev/v2/rate/${c}/MWK?providers=RBM`), "Reserve Bank of Malawi official reference rate"));
-  if (env.ALLRATES_KEY) tries.push(async () => pack(await fetchRows(c => `https://allratestoday.com/api/v1/central-bank/rbm/latest?source=${c}&target=MWK`, { authorization: "Bearer " + env.ALLRATES_KEY }), "Reserve Bank of Malawi official rate"));
-  let out = null;
-  for (const t of tries) { try { out = await t(); break; } catch (e) {} }
-  if (out && env.KV) ctx.waitUntil(env.KV.put("rates:last", JSON.stringify(out)));
-  if (!out && env.KV) { const l = await env.KV.get("rates:last", "json"); if (l) out = { ...l, stale: true }; }
-  if (!out) return J({ error: "Rates unavailable" }, 503);
-  if ((Date.now() - Date.parse(out.updated)) / 864e5 > 4) out.stale = true;
-  for (const k of Object.keys(out.perUnit)) out.perUnit[k] = Math.round(out.perUnit[k] * 100) / 100;
-  const body = { ...base, ...out, live: true };
-  if (!out.stale) ctx.waitUntil(cache.put(key, J(body, 200, "public, max-age=900")));
-  return J({ ...body, ...fees });
+  const fees = env.KV ? (await env.KV.get("fees", "json")) || {} : {}, cfg = env.KV ? (await env.KV.get("currencies", "json")) || {} : {}, manual = env.KV ? await env.KV.get("rates", "json") : null;
+  let out = await autoRates(request, env, ctx);
+  if (manual && manual.perUnit) out = { ...(out || {}), perUnit: { ...((out && out.perUnit) || {}), ...manual.perUnit }, basis: { ...((out && out.basis) || {}), ...Object.fromEntries(Object.keys(manual.perUnit).map(k => [k, "manual"])) }, source: manual.source, updated: manual.updated, override: true, stale: false };
+  if (!out || !out.perUnit) return J({ error: "Rates unavailable" }, 503);
+  const disabled = new Set(cfg.disabled || base.disabledCurrencies || []), perUnit = {}, basis = {};
+  for (const c of CUR) if (num(out.perUnit[c]) && !disabled.has(c)) { perUnit[c] = Number(Number(out.perUnit[c]).toPrecision(6)); basis[c] = (out.basis && out.basis[c]) || "rbm"; }
+  if (!Object.keys(perUnit).length) return J({ error: "Rates unavailable" }, 503);
+  return J({ ...base, ...out, perUnit, basis, ...fees, live: true });
 }
 
 /* ---------- SMS sign-in ---------- */
@@ -185,7 +209,7 @@ async function transfers(request, env, ctx) {
   const c = String(b.currency || ""), amt = Number(b.amount), rc = b.recipient || {}, rate = R.perUnit[c], t = s => String(s || "").trim();
   const bad = !rate ? "currency" : !(amt >= R.minSendMWK && amt <= R.maxSendMWK) ? "amount outside the limits" : !PAY_METHODS.includes(b.method) ? "payment method" : (t(rc.name).length < 2 || t(rc.country).length < 2 || t(rc.bank).length < 2) ? "recipient details" : t(rc.acct).replace(/\s/g, "").length < 6 ? "account number" : !/^[A-Za-z]{6}[A-Za-z0-9]{2}([A-Za-z0-9]{3})?$/.test(t(rc.swift)) ? "SWIFT code" : !/^[A-Za-z0-9-]{8,64}$/.test(b.key || "") ? "request key" : "";
   if (bad) return J({ error: "Invalid transfer", detail: bad }, 400);
-  if (Math.abs(rate - Number(b.rate)) > 0.005) return J({ error: "Rate changed", rate }, 409);
+  if (Math.abs(rate - Number(b.rate)) / rate > 0.0005) return J({ error: "Rate changed", rate }, 409);
   const dup = await env.DB.prepare("SELECT * FROM transfers WHERE phone=? AND idem=?").bind(a.phone, b.key).first(); if (dup) return J(view(dup));
   const amountMinor = mk(amt), feeMinor = Math.max(mk(R.minFeeMWK), Math.round(amountMinor * R.feePct / 100)), recvMinor = Math.floor(((amountMinor - feeMinor) / 100) / rate * 100);
   if (recvMinor <= 0) return J({ error: "Invalid transfer", detail: "amount too small after the fee" }, 400);
@@ -251,6 +275,16 @@ async function adminReport(request, env) {
   const fl = await env.DB.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(amount_minor),0) AS s FROM transfers WHERE status IN ('paid','sent')").first();
   const stale = await env.DB.prepare("SELECT COUNT(*) AS n FROM transfers WHERE status='awaiting_payment' AND created<?").bind(new Date(Date.now() - 864e5).toISOString()).first();
   return J({ date, created: { count: created.length, mwk: sum(created, x => x.amount_minor) / 100 }, paymentsIn: { count: by("paid").length, mwk: sum(by("paid"), x => x.amount_minor) / 100 }, sent: { count: by("sent").length, byCurrency: sentBy }, completed: { count: by("completed").length, feesMWK: sum(by("completed"), x => x.fee_minor) / 100 }, failed: { count: by("failed").length }, refundedToday: { count: by("refunded").length, mwk: sum(by("refunded"), x => x.amount_minor) / 100 }, refundsDue: { count: due.n, mwk: due.s / 100 }, inFlight: { count: fl.n, mwk: fl.s / 100 }, staleAwaitingPayment: stale.n });
+}
+
+async function adminCurrencies(request, env) {
+  const adm = await isAdmin(request, env); if (!adm) return J({ error: "Unauthorized" }, 401);
+  if (adm.role !== "owner") return J({ error: "Owner only" }, 403);
+  const saved = await env.KV.get("currencies", "json");
+  if (request.method === "GET") { const base = await (await env.ASSETS.fetch(new URL("/rates.json", request.url))).json(); return J({ all: CUR, disabled: saved ? saved.disabled : base.disabledCurrencies || [] }); }
+  const b = await request.json().catch(() => null);
+  if (!b || !Array.isArray(b.disabled) || !b.disabled.every(c => CUR.includes(c))) return J({ error: "Invalid list" }, 400);
+  await env.KV.put("currencies", JSON.stringify({ disabled: b.disabled })); await audit(env, adm.email, "currencies updated", b.disabled.length + " switched off"); return J({ ok: true });
 }
 
 async function adminLimits(request, env) {
@@ -350,7 +384,7 @@ async function adminRates(request, env) {
   if (request.method === "DELETE") { await env.KV.delete("rates"); await audit(env, adm.email, "rate override removed", ""); return J({ ok: true }); }
   if (request.method === "GET") return J((await env.KV.get("rates", "json")) || {});
   const b = await request.json().catch(() => null);
-  if (!b || !b.perUnit || !CUR.every(c => num(b.perUnit[c]))) return J({ error: "Invalid rates" }, 400);
+  if (!b || !b.perUnit || !Object.keys(b.perUnit).length || !Object.entries(b.perUnit).every(([k, v]) => CUR.includes(k) && num(v))) return J({ error: "Invalid rates" }, 400);
   const out = { perUnit: b.perUnit, source: String(b.source || "Reserve Bank of Malawi official rate").slice(0, 120), updated: new Date().toISOString().slice(0, 10) };
   await env.KV.put("rates", JSON.stringify(out)); await audit(env, adm.email, "rate override published", "USD " + out.perUnit.USD); return J(out);
 }
@@ -487,6 +521,7 @@ export default {
       if (p === "/api/admin/status") return adminStatus(request, env, ctx);
       if (p === "/api/admin/refunds") return adminRefunds(request, env);
       if (p === "/api/admin/report") return adminReport(request, env);
+      if (p === "/api/admin/currencies") return adminCurrencies(request, env);
       if (p === "/api/admin/limits") return adminLimits(request, env);
       if (p === "/api/admin/transfers") return adminTransfers(request, env);
       if (p === "/api/admin/rates") return adminRates(request, env);

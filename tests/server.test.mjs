@@ -9,8 +9,9 @@ const stmt = sql => ({ args: [], bind(...a) { this.args = a; return this; }, asy
 const DB = { prepare: stmt, async batch(l) { for (const s of l) await s.run(); return [] } };
 globalThis.caches = { default: { match: async () => null, put: async () => {} } };
 const fx = { fail: false, balance: "KES 50.0000", sms: [] };
-globalThis.fetch = async (u, o) => { u = String(u); if (u.includes("frankfurter")) return fx.fail ? new Response("x", { status: 500 }) : new Response(JSON.stringify({ date: new Date().toISOString().slice(0, 10), rate: 1734.01 })); if (u.includes("africastalking") && u.includes("/version1/user")) return new Response(JSON.stringify({ UserData: { balance: fx.balance } })); if (u.includes("africastalking")) { fx.sms.push(decodeURIComponent(String(o && o.body).replace(/\+/g, " "))); return new Response(JSON.stringify({ SMSMessageData: { Recipients: [{ statusCode: 101, status: "Success" }] } })); } return new Response("no", { status: 404 }); };
-const env = { KV, DB, MONITOR_KEY: "mk", ALERT_PHONE: "0990000000", SMS_MIN_BALANCE: "10", TRANSFERS_ENABLED: "true", ADMIN_TOKEN: "setup", AT_USERNAME: "u", AT_API_KEY: "k", ASSETS: { fetch: async () => new Response(JSON.stringify({ feePct: 1, minFeeMWK: 2000, minSendMWK: 20000, maxSendMWK: 5000000, dailyLimitMWK: 5000000, monthlyLimitMWK: 20000000, payInstructions: "" })) } };
+globalThis.fetch = async (u, o) => { u = String(u); if (u.includes("frankfurter") && u.includes("/v2/rates?")) { if (fx.fail) return new Response("x", { status: 500 }); const qs = new URL(u).searchParams.get("quotes").split(","); return new Response(JSON.stringify(qs.map(q => ({ date: new Date().toISOString().slice(0, 10), base: "USD", quote: q, rate: q === "NGN" ? 1500 : 50 })))); }
+if (u.includes("frankfurter")) return fx.fail ? new Response("x", { status: 500 }) : new Response(JSON.stringify({ date: new Date().toISOString().slice(0, 10), rate: 1734.01 })); if (u.includes("africastalking") && u.includes("/version1/user")) return new Response(JSON.stringify({ UserData: { balance: fx.balance } })); if (u.includes("africastalking")) { fx.sms.push(decodeURIComponent(String(o && o.body).replace(/\+/g, " "))); return new Response(JSON.stringify({ SMSMessageData: { Recipients: [{ statusCode: 101, status: "Success" }] } })); } return new Response("no", { status: 404 }); };
+const env = { KV, DB, MONITOR_KEY: "mk", ALERT_PHONE: "0990000000", SMS_MIN_BALANCE: "10", TRANSFERS_ENABLED: "true", ADMIN_TOKEN: "setup", AT_USERNAME: "u", AT_API_KEY: "k", ASSETS: { fetch: async () => new Response(JSON.stringify({ feePct: 1, minFeeMWK: 2000, minSendMWK: 20000, maxSendMWK: 5000000, disabledCurrencies: ["SDG", "SSP", "ERN", "LYD", "SOS"], dailyLimitMWK: 5000000, monthlyLimitMWK: 20000000, payInstructions: "" })) } };
 const ctx = { waitUntil: () => {} };
 const call = async (path, o = {}, tok) => { const r = await worker.fetch(new Request("https://x.dev" + path, { method: o.method || (o.body ? "POST" : "GET"), headers: { "content-type": "application/json", ...(tok ? { authorization: "Bearer " + tok } : {}) }, body: o.body ? JSON.stringify(o.body) : undefined }), env, ctx); return { s: r.status, j: await r.json().catch(() => null) }; };
 let fails = 0; const ok = (n, c, x) => { console.log(c ? "PASS" : "FAIL", n, c ? "" : JSON.stringify(x)); if (!c) fails++; };
@@ -84,5 +85,22 @@ kv.set("pending:" + (Date.now() - 2 * 864e5) + ":265990000001", "1"); st = await
 kv.delete([...kv.keys()].find(k => k.startsWith("pending:") && k.endsWith("265990000001")));
 st = await call("/api/status?key=mk"); ok("back to normal", st.s === 200, st);
 st = await call("/api/admin/status", {}, at); ok("admin status card data", st.s === 200 && st.j.info.smsBalance, st);
+
+r = await call("/api/rates"); const P = r.j.perUnit;
+ok("all African currencies offered (36 cross + 8 direct, minus 5 switched off)", Object.keys(P).length === 44 - 5, Object.keys(P).length);
+ok("direct vs cross basis", r.j.basis.USD === "rbm" && r.j.basis.KES === "rbm" && r.j.basis.NGN === "cross", JSON.stringify(r.j.basis).slice(0, 120));
+ok("NGN worked out from the USD rate (1734.01 / 1500)", Math.abs(P.NGN - 1.15601) < 0.0001, P.NGN);
+ok("switched-off currencies hidden by default", !P.SDG && !P.SSP && !P.ERN && !P.LYD && !P.SOS, Object.keys(P));
+const ng = await call("/api/transfers", { body: { ...body, key: "ngnkey-0001", amount: 100000, currency: "NGN", rate: P.NGN } }, "tok3");
+ok("transfer in a cross currency", ng.s === 201 && ng.j.currency === "NGN" && Math.abs(ng.j.receive - (98000 / P.NGN)) < 0.02, ng);
+r = await call("/api/transfers", { body: { ...body, key: "sdgkey-0001", currency: "SDG", rate: 1 } }, "tok3"); ok("switched-off currency refused", r.s === 400, r);
+r = await call("/api/admin/currencies", {}, at); ok("admin sees currency list", r.s === 200 && r.j.all.length === 44 && r.j.disabled.includes("SDG"), r);
+r = await call("/api/admin/currencies", { body: { disabled: ["NGN"] } }, at); ok("admin switches NGN off and SDG on", r.s === 200, r);
+r = await call("/api/rates"); ok("currency list follows admin choice", !r.j.perUnit.NGN && !!r.j.perUnit.SDG, Object.keys(r.j.perUnit).length);
+r = await call("/api/admin/currencies", { body: { disabled: ["XXX"] } }, at); ok("bad currency code refused", r.s === 400, r);
+await call("/api/admin/currencies", { body: { disabled: ["SDG", "SSP", "ERN", "LYD", "SOS"] } }, at);
+r = await call("/api/admin/rates", { body: { perUnit: { USD: 1800 }, source: "Test" } }, at); ok("override of one currency allowed", r.s === 200, r);
+r = await call("/api/rates"); ok("override keeps the other currencies", r.j.perUnit.USD === 1800 && r.j.basis.USD === "manual" && !!r.j.perUnit.NGN, r.j.basis.USD);
+await call("/api/admin/rates", { method: "DELETE" }, at);
 env.TRANSFERS_ENABLED = "false"; r = await call("/api/transfers", { body: { ...body, key: "abcdefgh-6" } }, "tok"); ok("disabled flag blocks creation", r.s === 503, r);
 process.exit(fails ? 1 : 0);

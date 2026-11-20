@@ -14,8 +14,9 @@ const stmt = sql => ({ args: [], bind(...a) { this.args = a; return this; }, asy
 const DB = { prepare: stmt, async batch(l) { for (const s of l) await s.run(); return []; } };
 let lastCode = "";
 globalThis.caches = { default: { match: async () => null, put: async () => {} } };
-globalThis.fetch = async (u, o) => { u = String(u); if (u.includes("frankfurter")) return new Response(JSON.stringify({ date: new Date().toISOString().slice(0, 10), rate: 1734.01 })); if (u.includes("africastalking")) { lastCode = (decodeURIComponent(String(o.body).replace(/\+/g," ")).match(/code is (\d{6})/) || [])[1] || lastCode; return new Response(JSON.stringify({ SMSMessageData: { Recipients: [{ statusCode: 101, status: "Success" }] } })); } return new Response("no", { status: 404 }); };
-const env = { KV, DB, TRANSFERS_ENABLED: "true", ADMIN_TOKEN: "setup", AT_USERNAME: "u", AT_API_KEY: "k", ASSETS: { fetch: async () => new Response(JSON.stringify({ feePct: 1, minFeeMWK: 2000, minSendMWK: 20000, maxSendMWK: 5000000, dailyLimitMWK: 5000000, monthlyLimitMWK: 20000000, payInstructions: "Pay to till 1234.", supportEmail: "help@example.com" })) } };
+globalThis.fetch = async (u, o) => { u = String(u); if (u.includes("frankfurter") && u.includes("/v2/rates?")) { const qs = new URL(u).searchParams.get("quotes").split(","); return new Response(JSON.stringify(qs.map(q => ({ date: new Date().toISOString().slice(0, 10), base: "USD", quote: q, rate: q === "NGN" ? 1500 : 50 })))); }
+if (u.includes("frankfurter")) return new Response(JSON.stringify({ date: new Date().toISOString().slice(0, 10), rate: 1734.01 })); if (u.includes("africastalking")) { lastCode = (decodeURIComponent(String(o.body).replace(/\+/g," ")).match(/code is (\d{6})/) || [])[1] || lastCode; return new Response(JSON.stringify({ SMSMessageData: { Recipients: [{ statusCode: 101, status: "Success" }] } })); } return new Response("no", { status: 404 }); };
+const env = { KV, DB, TRANSFERS_ENABLED: "true", ADMIN_TOKEN: "setup", AT_USERNAME: "u", AT_API_KEY: "k", ASSETS: { fetch: async () => new Response(JSON.stringify({ feePct: 1, minFeeMWK: 2000, minSendMWK: 20000, maxSendMWK: 5000000, disabledCurrencies: ["SDG", "SSP", "ERN", "LYD", "SOS"], disabledCurrencies: ["SDG", "SSP", "ERN", "LYD", "SOS"], dailyLimitMWK: 5000000, monthlyLimitMWK: 20000000, payInstructions: "Pay to till 1234.", supportEmail: "help@example.com" })) } };
 const ctx = { waitUntil: () => {} };
 const api = async (path, o = {}, tok) => { const r = await worker.fetch(new Request("https://x.dev" + path, { method: o.method || (o.body ? "POST" : "GET"), headers: { "content-type": "application/json", ...(tok ? { authorization: "Bearer " + tok } : {}) }, body: o.body ? JSON.stringify(o.body) : undefined }), env, ctx); return { s: r.status, j: await r.json().catch(() => null) }; };
 
@@ -27,9 +28,11 @@ w.scrollTo = () => {}; w.alert = m => errors.push("alert: " + m); w.confirm = ()
 Object.defineProperty(w, "crypto", { value: webcrypto, configurable: true });
 w.addEventListener("error", e => errors.push("page error: " + e.message));
 const ctxVm = dom.getInternalVMContext();
+new vm.Script(readFileSync(here("../currencies.js"), "utf8")).runInContext(ctxVm);
 new vm.Script(readFileSync(here("../app.js"), "utf8")).runInContext(ctxVm);
 const get = code => new vm.Script(code).runInContext(ctxVm), run = get;
 const $ = s => w.document.querySelector(s), text = () => w.document.body.textContent.replace(/\s+/g, " ");
+const S_cur = () => get("S.q.cur");
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const click = async sel => { const e = typeof sel === "string" ? $(sel) : sel; if (!e) throw new Error("missing " + sel); e.click(); await sleep(60); };
 const type = async (sel, v) => { const e = $(sel); if (!e) throw new Error("missing " + sel); e.value = v; e.dispatchEvent(new w.Event("input", { bubbles: true })); e.dispatchEvent(new w.Event("change", { bubbles: true })); };
@@ -66,6 +69,23 @@ await click('[data-a="start"]'); await sleep(120); ok("Send money goes to the se
 w.document.dispatchEvent(new w.Event("visibilitychange")); await sleep(150); ok("returning to the tab does not show the greeting again", !!$("#amt"), text().slice(0, 120));
 // reload keeps the user signed in and on Home (no fall back)
 const ls = w.localStorage.getItem("mwuser"); ok("session stored", !!JSON.parse(ls).token);
+ok("dropdown bundles African currencies by region", $("#cur").querySelectorAll("optgroup").length === 7 && $("#cur").querySelectorAll("option").length === 39, $("#cur").querySelectorAll("option").length);
+ok("regions and names present", !!$('#cur optgroup[label="West Africa"] option[value="NGN"]') && $('#cur option[value="NGN"]').textContent === "NGN - Nigerian naira", "");
+ok("switched-off currencies not shown", !$('#cur option[value="SDG"]'));
+ok("quick chips show only the popular currencies", $("#app").querySelectorAll('[data-a="cur"]').length === 4, $("#app").querySelectorAll('[data-a="cur"]').length);
+ok("first in each region follows the guessed order", $('#cur optgroup[label="Southern Africa"] option').textContent.startsWith("ZAR") && $('#cur optgroup[label="West Africa"] option').textContent.startsWith("NGN") && [...$("#cur").querySelectorAll("optgroup")].map(g => g.label).join() === "Popular,Southern Africa,East Africa,West Africa,Central Africa,North Africa,Indian Ocean", [...$("#cur").querySelectorAll("optgroup")].map(g => g.label).join());
+ok("search box present", !!$("#cq") && $("#cq").getAttribute("placeholder") === "Search country or currency");
+await type("#cq", "nigeria"); ok("search by country finds only NGN and selects it", $("#cur").querySelectorAll("option").length === 1 && $("#cur").value === "NGN" && text().includes("1 NGN = MWK 1.1560"), $("#cur").innerHTML.slice(0, 120));
+await type("#cq", "ivory"); ok("search by another name (Ivory Coast) finds XOF", $("#cur").value === "XOF" && $("#cur").querySelectorAll("option").length === 1, $("#cur").innerHTML.slice(0, 120));
+await type("#cq", "rand"); ok("search by currency name finds ZAR", $("#cur").value === "ZAR", $("#cur").value);
+await type("#cq", "south"); ok("several matches: list narrows to South African rand (switched-off ones hidden)", $("#cur").querySelectorAll("option").length >= 1 && /South/.test($("#cur").textContent), $("#cur").textContent.slice(0, 80));
+await type("#cq", "ken"); ok("partial text matches (ken -> KES)", $("#cur").value === "KES");
+await type("#cq", "zzzz"); ok("no match shows a message and keeps the choice", $("#cur").textContent.includes("No currency found") && S_cur() === "KES", $("#cur").textContent);
+await type("#cq", ""); ok("clearing the search brings back every currency", $("#cur").querySelectorAll("option").length === 39 && $("#cur").value === "KES", $("#cur").querySelectorAll("option").length);
+await type("#cur", "NGN"); await sleep(50);
+ok("NGN selected: rate shown to 4 places with a cross-rate note", $("#cur").value === "NGN" && text().includes("1 NGN = MWK 1.1560") && text().includes("does not publish NGN directly"), text().slice(0, 300));
+await type("#cur", "KES"); await sleep(50); ok("KES is a direct RBM rate (no cross note)", !text().includes("does not publish KES directly"), text().slice(0, 200));
+await type("#cur", "USD"); await sleep(50);
 await type("#amt", "500000"); await sleep(50);
 ok("fee + limit notes", text().includes("1% of the amount") && text().includes("2,000") && text().includes("5,000,000"), text().slice(0, 400));
 ok("receive amount shown", /28[0-9]\.\d\d/.test($("#recv").textContent), $("#recv").textContent);

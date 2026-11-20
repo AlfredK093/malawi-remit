@@ -3,7 +3,7 @@
 Installable web app for sending money from Malawi at the Reserve Bank of Malawi rate. Sending money is switched off.
 
 ## Files (all at the top level of the repo)
-`index.html` `app.js` `admin.html` `admin.js` `_worker.js` `_routes.json` `sw.js` `manifest.json` `rates.json` `icons/`
+`index.html` `app.js` `currencies.js` `admin.html` `admin.js` `_worker.js` `_routes.json` `sw.js` `manifest.json` `rates.json` `icons/`
 `_worker.js` is the whole backend. The old `functions/` folder is not needed.
 
 ## Cloudflare Pages settings
@@ -52,3 +52,8 @@ Daily and monthly limits (MWK) per person are set in `/admin` > Fees and limits 
 - `/admin` > System status (owners) shows live problems: rates missing or out of date, SMS balance low, texts failing, server errors rising, ID checks waiting over 24 hours, refunds owed over 24 hours, paid transfers not sent over 24 hours.
 - For alerts when nobody is looking, set `MONITOR_KEY` (a long random secret) and add a free uptime monitor (for example UptimeRobot or Better Stack) that checks `https://YOURSITE/api/status?key=YOURKEY` every 5 minutes and emails you. It gets 200 when all is well and 503 when something needs attention.
 - Optional: `ALERT_PHONE` (your number) makes the app text you once for each new problem; `SMS_MIN_BALANCE` sets the low-balance level (default 5, in your Africa's Talking currency).
+
+## Currencies
+Customers can send to USD, GBP, EUR and every African currency (44 in total), grouped by region in one dropdown. The Reserve Bank of Malawi publishes USD, GBP, EUR, ZAR, BWP, KES, TZS and ZMW directly; every other currency is worked out from the RBM dollar rate and a central-bank dollar rate (one batch call to Frankfurter), and customers are told so on the amount screen. Owners switch currencies on or off in /admin > Currencies. SDG, SSP, ERN, LYD and SOS start switched off (see `disabledCurrencies` in `rates.json`) until your compliance adviser approves them. A manual rate override can set any subset of currencies; the rest stay automatic.
+
+The amount screen has a search box above the currency dropdown: people can type a country (Nigeria, Ivory Coast), a currency (rand) or a code (KES). Order inside each region is a best guess (neighbours and biggest partners first); change it by reordering the rows in `currencies.js`.

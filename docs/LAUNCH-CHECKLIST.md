@@ -30,6 +30,8 @@ Tick every box. Anything you cannot tick is a reason to wait. Use a separate tes
 - [ ] Amounts below the minimum, above the maximum, and above remaining daily/monthly limits are blocked with a clear message.
 - [ ] Rate shown matches `/api/rates`; changing currency chip updates everything.
 - [ ] Recipient: bad SWIFT or short account number is refused.
+- [ ] Currency dropdown: open it on both phones; regions are grouped, names are readable, and you can pick Nigerian naira, Kenyan shilling and a CFA franc. A cross-rate currency (for example NGN) shows the "calculated from the dollar rate" note; a direct one (KES, ZAR) does not.
+- [ ] Pick 5 currencies and compare the rate shown with the Reserve Bank of Malawi website (direct ones) and a trusted market rate (cross ones). Switched-off currencies (SDG, SSP, ERN, LYD, SOS) do not appear.
 - [ ] (Test project) Confirm transfer: receipt appears with reference `MW-...`, "How to pay" shows your instructions, Activity lists it.
 - [ ] Double-tapping Confirm creates only one transfer.
 - [ ] If the bank rate changes between review and confirm, the app asks to review again.
@@ -50,6 +52,7 @@ Tick every box. Anything you cannot tick is a reason to wait. Use a separate tes
 - [ ] Two-step sign-in: turn on, sign out, sign in needs the code; wrong code refused; turn off needs the password.
 - [ ] Add a Reviewer: they see ID checks only; Rates, Fees, Limits, Transfers, Refunds, Report, Team are hidden and the server refuses them (test with section 4).
 - [ ] Rates: publish an override, confirm the customer app shows it; "Use automatic rates" restores the bank rate. Clear any override before launch.
+- [ ] Currencies: switch one off in /admin, confirm it disappears from the customer dropdown within a minute and a transfer in it is refused; switch it back on.
 - [ ] Fees and limits: change fee, minimum fee, send limits, daily and monthly limits; customer app updates immediately. Custom limit for one person works and can be removed.
 - [ ] ID checks: photos are readable; approve and reject both text the customer; photos are gone after the decision (re-open the record: only text remains).
 - [ ] Transfers: only valid next steps are allowed (cannot jump from Awaiting to Sent).
